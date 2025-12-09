@@ -4,14 +4,8 @@
     Uninstaller for Simple Windows Screentime
 .DESCRIPTION
     Removes the Screen Time service, blocker, config panel, scheduled tasks, and all data.
-    Requires the -Force flag to proceed (safety measure since this bypasses PIN verification).
-.PARAMETER Force
-    Required to actually perform the uninstall. Without this flag, the script shows a warning.
+    Requires the PIN to be cleared first via ConfigPanel (reset all settings).
 #>
-
-param(
-    [switch]$Force
-)
 
 $ErrorActionPreference = "Stop"
 
@@ -19,6 +13,8 @@ $ErrorActionPreference = "Stop"
 $ServiceName = "WinDisplayCalibration"
 $InstallPath = "$env:ProgramFiles\SimpleWindowsScreentime"
 $DataPath = "$env:ProgramData\STGuard"
+$ConfigPath = "$DataPath\config.json"
+$PipeName = "STG_Pipe_7f3a"
 
 $TaskNames = @("STG_Monitor_1", "STG_Monitor_2", "STG_LogonTrigger", "STG_BootCheck")
 
@@ -55,9 +51,6 @@ function Request-Elevation {
         }
 
         $arguments = "-NoProfile -ExecutionPolicy Bypass -File `"$scriptPath`""
-        if ($Force) {
-            $arguments += " -Force"
-        }
 
         try {
             Start-Process PowerShell -Verb RunAs -ArgumentList $arguments -Wait
@@ -69,6 +62,61 @@ function Request-Elevation {
         }
         exit 0
     }
+}
+
+function Test-PinCleared {
+    # Method 1: Try to query service via named pipe
+    try {
+        $pipeClient = New-Object System.IO.Pipes.NamedPipeClientStream(".", $PipeName, [System.IO.Pipes.PipeDirection]::InOut)
+        $pipeClient.Connect(3000) # 3 second timeout
+
+        $writer = New-Object System.IO.StreamWriter($pipeClient)
+        $reader = New-Object System.IO.StreamReader($pipeClient)
+
+        $writer.AutoFlush = $true
+        $writer.WriteLine('{"type":"get_state"}')
+
+        $response = $reader.ReadLine()
+        $pipeClient.Close()
+
+        if ($response) {
+            $state = $response | ConvertFrom-Json
+            if ($state.is_setup_mode -eq $true) {
+                return $true
+            }
+            else {
+                return $false
+            }
+        }
+    }
+    catch {
+        # Service not responding, fall back to config file check
+    }
+
+    # Method 2: Check config file directly
+    if (Test-Path $ConfigPath) {
+        try {
+            $config = Get-Content $ConfigPath -Raw | ConvertFrom-Json
+            if ([string]::IsNullOrEmpty($config.pin_hash) -or [string]::IsNullOrEmpty($config.pin_salt)) {
+                return $true
+            }
+            else {
+                return $false
+            }
+        }
+        catch {
+            # Config file unreadable, assume PIN is set for safety
+            return $false
+        }
+    }
+
+    # No config file = no PIN set (fresh install or already cleaned)
+    return $true
+}
+
+function Test-ServiceInstalled {
+    $service = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
+    return $null -ne $service
 }
 
 function Stop-BlockerProcesses {
@@ -211,20 +259,25 @@ function Remove-DataFolder {
     }
 }
 
-function Show-Warning {
+function Show-PinRequiredError {
     Write-Host ""
-    Write-Host "═══════════════════════════════════════════════════════════════" -ForegroundColor Yellow
-    Write-Host "                         WARNING                                " -ForegroundColor Yellow
-    Write-Host "═══════════════════════════════════════════════════════════════" -ForegroundColor Yellow
+    Write-Host "═══════════════════════════════════════════════════════════════" -ForegroundColor Red
+    Write-Host "                    UNINSTALL BLOCKED                           " -ForegroundColor Red
+    Write-Host "═══════════════════════════════════════════════════════════════" -ForegroundColor Red
     Write-Host ""
-    Write-Host "  This script will completely remove Simple Windows Screentime" -ForegroundColor White
-    Write-Host "  without requiring PIN verification." -ForegroundColor White
+    Write-Host "  A PIN is currently set. You must clear your PIN before" -ForegroundColor White
+    Write-Host "  uninstalling Screen Time." -ForegroundColor White
     Write-Host ""
-    Write-Host "  For normal uninstallation, use the ConfigPanel app to reset" -ForegroundColor Cyan
-    Write-Host "  settings with your PIN." -ForegroundColor Cyan
+    Write-Host "  To uninstall:" -ForegroundColor Cyan
+    Write-Host "  1. Run STConfigPanel.exe" -ForegroundColor Yellow
+    Write-Host "  2. Enter your PIN to access settings" -ForegroundColor Yellow
+    Write-Host "  3. Click 'Reset All Settings' and enter your PIN" -ForegroundColor Yellow
+    Write-Host "  4. Run this uninstaller again" -ForegroundColor Yellow
     Write-Host ""
-    Write-Host "  To proceed with force uninstall, run:" -ForegroundColor Yellow
-    Write-Host "    .\Uninstall.ps1 -Force" -ForegroundColor Green
+    Write-Host "  If you forgot your PIN:" -ForegroundColor Cyan
+    Write-Host "  1. Wait for the blocker to appear during block hours" -ForegroundColor Yellow
+    Write-Host "  2. Click 'Forgot PIN?' to start 48-hour recovery" -ForegroundColor Yellow
+    Write-Host "  3. After recovery completes, run this uninstaller" -ForegroundColor Yellow
     Write-Host ""
 }
 
@@ -247,11 +300,32 @@ function Main {
     Write-Host "═══════════════════════════════════════════════════════════════" -ForegroundColor Cyan
     Write-Host ""
 
-    if (-not $Force) {
-        Show-Warning
+    # Check/request elevation first
+    Request-Elevation
+
+    # Check if anything is installed
+    $serviceInstalled = Test-ServiceInstalled
+    $installFolderExists = Test-Path $InstallPath
+    $dataFolderExists = Test-Path $DataPath
+
+    if (-not $serviceInstalled -and -not $installFolderExists -and -not $dataFolderExists) {
+        Write-Info "Screen Time does not appear to be installed."
         Read-Host "Press Enter to exit"
         return
     }
+
+    # Check if PIN is cleared
+    Write-Step "Checking PIN status..."
+
+    $pinCleared = Test-PinCleared
+
+    if (-not $pinCleared) {
+        Show-PinRequiredError
+        Read-Host "Press Enter to exit"
+        return
+    }
+
+    Write-Success "PIN is cleared - uninstall authorized"
 
     # Confirm
     Write-Host ""
@@ -261,9 +335,6 @@ function Main {
         Read-Host "Press Enter to exit"
         return
     }
-
-    # Check/request elevation
-    Request-Elevation
 
     # Perform uninstall
     Stop-BlockerProcesses
