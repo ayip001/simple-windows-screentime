@@ -68,8 +68,8 @@ public class IpcClient : IDisposable
                 PipeDirection.InOut,
                 PipeOptions.Asynchronous);
 
-            var connectCts = new CancellationTokenSource(TimeoutMs);
-            await client.ConnectAsync(connectCts.Token);
+            using var cts = new CancellationTokenSource(TimeoutMs);
+            await client.ConnectAsync(cts.Token);
 
             using var reader = new StreamReader(client, Encoding.UTF8, leaveOpen: true);
             await using var writer = new StreamWriter(client, Encoding.UTF8, leaveOpen: true) { AutoFlush = true };
@@ -77,7 +77,11 @@ public class IpcClient : IDisposable
             var json = IpcSerializer.Serialize(request);
             await writer.WriteLineAsync(json);
 
-            var responseLine = await reader.ReadLineAsync();
+            // Add timeout to ReadLineAsync to prevent indefinite hanging
+            using var readCts = new CancellationTokenSource(TimeoutMs);
+            var readTask = reader.ReadLineAsync(readCts.Token);
+            var responseLine = await readTask;
+
             if (string.IsNullOrEmpty(responseLine))
                 return null;
 

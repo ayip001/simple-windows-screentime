@@ -392,11 +392,10 @@ class Program
             }
         }
 
-        // Check for task script and batch files
+        // Check for check script file
         Console.WriteLine();
         Console.WriteLine("  Task files:");
 
-        // Check main check script
         var checkScript = Path.Combine(Constants.ProgramDataPath, "STG_Check.ps1");
         if (File.Exists(checkScript))
         {
@@ -405,20 +404,6 @@ class Program
         else
         {
             WriteColor($"    [X] {checkScript} - NOT FOUND", ConsoleColor.Red);
-        }
-
-        // Check batch wrappers
-        foreach (var taskName in taskNames)
-        {
-            var batchPath = Path.Combine(Constants.ProgramDataPath, $"{taskName}.cmd");
-            if (File.Exists(batchPath))
-            {
-                WriteColor($"    [OK] {batchPath}", ConsoleColor.Green);
-            }
-            else
-            {
-                WriteColor($"    [X] {batchPath} - NOT FOUND", ConsoleColor.Red);
-            }
         }
     }
 

@@ -427,22 +427,6 @@ function Backup-ServiceConfiguration {
 function New-ScheduledTasks {
     Write-Step "Creating scheduled tasks..."
 
-    $tasks = @(
-        @{
-            Name = "STG_Monitor"
-            Trigger = "MINUTE"
-            Modifier = "1"
-        },
-        @{
-            Name = "STG_LogonTrigger"
-            Trigger = "ONLOGON"
-        },
-        @{
-            Name = "STG_BootCheck"
-            Trigger = "ONSTART"
-        }
-    )
-
     # Create a single check script that all tasks use
     $checkScriptPath = Join-Path $DataPath "STG_Check.ps1"
     $checkScriptContent = @"
@@ -473,40 +457,54 @@ if (`$null -ne `$service -and `$service.Status -ne 'Running') {
     }
     catch {
         Write-Warn "Failed to create check script: $_"
+        return $false
     }
+
+    # Create scheduled tasks using PowerShell cmdlets instead of schtasks.exe
+    $tasks = @(
+        @{
+            Name = "STG_Monitor"
+            Trigger = "Daily"
+            RepeatInterval = "1 minute"
+        },
+        @{
+            Name = "STG_LogonTrigger"
+            Trigger = "AtLogon"
+        },
+        @{
+            Name = "STG_BootCheck"
+            Trigger = "AtStartup"
+        }
+    )
+
+    $action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-ExecutionPolicy Bypass -WindowStyle Hidden -NonInteractive -File `"$checkScriptPath`""
+    $principal = New-ScheduledTaskPrincipal -UserId "SYSTEM" -LogonType ServiceAccount -RunLevel Highest
+    $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable
 
     foreach ($task in $tasks) {
         try {
-            # Delete existing task
-            $null = & schtasks.exe /Delete /TN $task.Name /F 2>&1
+            # Remove existing task
+            Unregister-ScheduledTask -TaskName $task.Name -Confirm:$false -ErrorAction SilentlyContinue
 
-            # Create a batch wrapper to avoid PowerShell path quoting issues
-            $batchPath = Join-Path $DataPath ($task.Name + ".cmd")
-            $batchContent = "@echo off`r`npowershell.exe -ExecutionPolicy Bypass -WindowStyle Hidden -NonInteractive -File `"$checkScriptPath`""
-            Set-Content -Path $batchPath -Value $batchContent -Encoding ASCII -Force
-
-            # Build schtasks command with batch file
-            $createArgs = @("/Create", "/TN", $task.Name, "/RU", "SYSTEM", "/RL", "HIGHEST", "/F")
-
-            if ($task.Trigger -eq "MINUTE") {
-                $createArgs += @("/SC", "MINUTE", "/MO", $task.Modifier)
+            # Create trigger based on type
+            if ($task.Trigger -eq "Daily") {
+                $trigger = New-ScheduledTaskTrigger -Once -At (Get-Date) -RepetitionInterval (New-TimeSpan -Minutes 1)
             }
-            elseif ($task.Trigger -eq "ONLOGON") {
-                $createArgs += @("/SC", "ONLOGON")
+            elseif ($task.Trigger -eq "AtLogon") {
+                $trigger = New-ScheduledTaskTrigger -AtLogon
             }
-            elseif ($task.Trigger -eq "ONSTART") {
-                $createArgs += @("/SC", "ONSTART")
+            elseif ($task.Trigger -eq "AtStartup") {
+                $trigger = New-ScheduledTaskTrigger -AtStartup
             }
 
-            $createArgs += @("/TR", "`"$batchPath`"")
+            # Register the task
+            Register-ScheduledTask -TaskName $task.Name -Action $action -Trigger $trigger -Principal $principal -Settings $settings -Force | Out-Null
 
-            $result = & schtasks.exe @createArgs 2>&1
-
-            if ($LASTEXITCODE -eq 0) {
+            if ($?) {
                 Write-Success "Created task: $($task.Name)"
             }
             else {
-                Write-Warn "Failed to create task: $($task.Name) - $result"
+                Write-Warn "Failed to create task: $($task.Name)"
             }
         }
         catch {
@@ -572,6 +570,16 @@ function Show-Summary {
     Write-Host "  Or wait until block hours to see the setup screen." -ForegroundColor Cyan
     Write-Host ""
     Write-Host "  Default block hours: 1:00 AM - 7:00 AM" -ForegroundColor Gray
+    Write-Host ""
+    Write-Host "  -----------------------------------------------------------------" -ForegroundColor Gray
+    Write-Host "  TROUBLESHOOTING" -ForegroundColor Cyan
+    Write-Host ""
+    Write-Host "  Debug tool (in publish folder):" -ForegroundColor White
+    Write-Host "    STDebug.exe                  - Service diagnostics" -ForegroundColor Yellow
+    Write-Host "    STDebug.exe --enable-backdoor - Emergency access mode" -ForegroundColor Yellow
+    Write-Host ""
+    Write-Host "  Service logs: Event Viewer > Windows Logs > Application" -ForegroundColor White
+    Write-Host "  Config file:  $DataPath\config.json" -ForegroundColor White
     Write-Host ""
 }
 
