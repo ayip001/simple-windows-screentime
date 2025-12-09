@@ -1,0 +1,193 @@
+<Window x:Class="SimpleWindowsScreentime.Blocker.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Screen Time"
+        WindowStyle="None"
+        WindowState="Maximized"
+        Topmost="True"
+        ResizeMode="NoResize"
+        ShowInTaskbar="False"
+        AllowsTransparency="False"
+        Background="#1a1a2e">
+
+    <Grid>
+        <!-- Main blocking view -->
+        <StackPanel x:Name="BlockingView"
+                    VerticalAlignment="Center"
+                    HorizontalAlignment="Center"
+                    Visibility="Visible">
+
+            <!-- Title -->
+            <TextBlock Text="SCREEN TIME ACTIVE"
+                       FontSize="48"
+                       FontWeight="Bold"
+                       Foreground="#e74c3c"
+                       HorizontalAlignment="Center"
+                       Margin="0,0,0,40"/>
+
+            <!-- Time info -->
+            <TextBlock x:Name="UnblockTimeText"
+                       FontSize="24"
+                       Foreground="#ecf0f1"
+                       HorizontalAlignment="Center"
+                       Margin="0,0,0,10"/>
+
+            <TextBlock x:Name="TimeRemainingText"
+                       FontSize="32"
+                       Foreground="#3498db"
+                       FontWeight="SemiBold"
+                       HorizontalAlignment="Center"
+                       Margin="0,0,0,60"/>
+
+            <!-- PIN Entry -->
+            <StackPanel HorizontalAlignment="Center" Margin="0,0,0,20">
+                <TextBlock Text="PIN:"
+                           FontSize="18"
+                           Foreground="#bdc3c7"
+                           HorizontalAlignment="Center"
+                           Margin="0,0,0,10"/>
+
+                <Grid>
+                    <PasswordBox x:Name="PinBox"
+                                 Width="200"
+                                 Height="50"
+                                 FontSize="24"
+                                 MaxLength="4"
+                                 HorizontalContentAlignment="Center"
+                                 VerticalContentAlignment="Center"
+                                 Background="#2c3e50"
+                                 Foreground="White"
+                                 BorderBrush="#3498db"
+                                 BorderThickness="2"
+                                 PasswordChanged="PinBox_PasswordChanged"/>
+                </Grid>
+
+                <TextBlock x:Name="PinErrorText"
+                           FontSize="14"
+                           Foreground="#e74c3c"
+                           HorizontalAlignment="Center"
+                           Margin="0,10,0,0"
+                           Visibility="Collapsed"/>
+            </StackPanel>
+
+            <!-- Unlock buttons -->
+            <StackPanel x:Name="UnlockButtons"
+                        Orientation="Horizontal"
+                        HorizontalAlignment="Center"
+                        Margin="0,0,0,30"
+                        Visibility="Collapsed">
+                <Button Content="15 min"
+                        Style="{StaticResource PinButtonStyle}"
+                        Click="Unlock15Min_Click"/>
+                <Button Content="1 hour"
+                        Style="{StaticResource PinButtonStyle}"
+                        Click="Unlock1Hour_Click"/>
+                <Button Content="This Period"
+                        Style="{StaticResource PinButtonStyle}"
+                        Click="UnlockPeriod_Click"/>
+            </StackPanel>
+
+            <!-- Forgot PIN -->
+            <Button x:Name="ForgotPinButton"
+                    Content="Forgot PIN?"
+                    Style="{StaticResource LinkButtonStyle}"
+                    HorizontalAlignment="Center"
+                    Click="ForgotPin_Click"/>
+
+            <!-- Recovery banner -->
+            <Border x:Name="RecoveryBanner"
+                    Background="#e67e22"
+                    CornerRadius="5"
+                    Padding="20,15"
+                    Margin="0,40,0,0"
+                    Visibility="Collapsed">
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                    <TextBlock Text="⚠"
+                               FontSize="18"
+                               Foreground="White"
+                               VerticalAlignment="Center"
+                               Margin="0,0,10,0"/>
+                    <TextBlock x:Name="RecoveryText"
+                               FontSize="16"
+                               Foreground="White"
+                               VerticalAlignment="Center"/>
+                    <Button Content="Cancel"
+                            Margin="20,0,0,0"
+                            Padding="15,5"
+                            Background="#c0392b"
+                            Foreground="White"
+                            BorderThickness="0"
+                            Cursor="Hand"
+                            Click="CancelRecovery_Click"/>
+                </StackPanel>
+            </Border>
+        </StackPanel>
+
+        <!-- Setup view -->
+        <StackPanel x:Name="SetupView"
+                    VerticalAlignment="Center"
+                    HorizontalAlignment="Center"
+                    Visibility="Collapsed">
+
+            <TextBlock Text="INITIAL SETUP"
+                       FontSize="42"
+                       FontWeight="Bold"
+                       Foreground="#2ecc71"
+                       HorizontalAlignment="Center"
+                       Margin="0,0,0,20"/>
+
+            <TextBlock Text="Create a 4-digit PIN to unlock screen time"
+                       FontSize="18"
+                       Foreground="#bdc3c7"
+                       HorizontalAlignment="Center"
+                       Margin="0,0,0,40"/>
+
+            <StackPanel HorizontalAlignment="Center">
+                <TextBlock Text="Enter PIN:"
+                           FontSize="16"
+                           Foreground="#bdc3c7"
+                           Margin="0,0,0,5"/>
+                <PasswordBox x:Name="SetupPinBox"
+                             Width="200"
+                             Height="50"
+                             FontSize="24"
+                             MaxLength="4"
+                             HorizontalContentAlignment="Center"
+                             VerticalContentAlignment="Center"
+                             Background="#2c3e50"
+                             Foreground="White"
+                             BorderBrush="#3498db"
+                             BorderThickness="2"/>
+
+                <TextBlock Text="Confirm PIN:"
+                           FontSize="16"
+                           Foreground="#bdc3c7"
+                           Margin="0,20,0,5"/>
+                <PasswordBox x:Name="SetupConfirmPinBox"
+                             Width="200"
+                             Height="50"
+                             FontSize="24"
+                             MaxLength="4"
+                             HorizontalContentAlignment="Center"
+                             VerticalContentAlignment="Center"
+                             Background="#2c3e50"
+                             Foreground="White"
+                             BorderBrush="#3498db"
+                             BorderThickness="2"/>
+
+                <TextBlock x:Name="SetupErrorText"
+                           FontSize="14"
+                           Foreground="#e74c3c"
+                           HorizontalAlignment="Center"
+                           Margin="0,15,0,0"
+                           Visibility="Collapsed"/>
+
+                <Button Content="Set PIN"
+                        Style="{StaticResource PinButtonStyle}"
+                        Width="200"
+                        Margin="0,30,0,0"
+                        Click="SetupPin_Click"/>
+            </StackPanel>
+        </StackPanel>
+    </Grid>
+</Window>
