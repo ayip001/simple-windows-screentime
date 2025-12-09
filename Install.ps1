@@ -40,11 +40,11 @@ function Write-ColorOutput {
     $host.UI.RawUI.ForegroundColor = $oldColor
 }
 
-function Write-Success { param([string]$Message) Write-ColorOutput "✓ $Message" Green }
-function Write-Warning { param([string]$Message) Write-ColorOutput "⚠ $Message" Yellow }
-function Write-Error { param([string]$Message) Write-ColorOutput "✗ $Message" Red }
-function Write-Info { param([string]$Message) Write-ColorOutput "  $Message" Cyan }
-function Write-Step { param([string]$Message) Write-ColorOutput "`n► $Message" White }
+function Write-Success { param([string]$Message) Write-ColorOutput "[OK] $Message" Green }
+function Write-Warn { param([string]$Message) Write-ColorOutput "[!] $Message" Yellow }
+function Write-Err { param([string]$Message) Write-ColorOutput "[X] $Message" Red }
+function Write-Info { param([string]$Message) Write-ColorOutput "    $Message" Cyan }
+function Write-Step { param([string]$Message) Write-ColorOutput "`n==> $Message" White }
 
 function Test-Administrator {
     $currentUser = [Security.Principal.WindowsIdentity]::GetCurrent()
@@ -54,7 +54,7 @@ function Test-Administrator {
 
 function Request-Elevation {
     if (-not (Test-Administrator)) {
-        Write-Warning "Requesting administrator privileges..."
+        Write-Warn "Requesting administrator privileges..."
 
         $scriptPath = $MyInvocation.PSCommandPath
         if ([string]::IsNullOrEmpty($scriptPath)) {
@@ -70,7 +70,7 @@ function Request-Elevation {
             Start-Process PowerShell -Verb RunAs -ArgumentList $arguments -Wait
         }
         catch {
-            Write-Error "Failed to elevate. Please run this script as Administrator."
+            Write-Err "Failed to elevate. Please run this script as Administrator."
             Read-Host "Press Enter to exit"
             exit 1
         }
@@ -113,7 +113,7 @@ function Install-DotNet8 {
         return $true
     }
 
-    Write-Warning ".NET 8 Desktop Runtime not found. Required for installation."
+    Write-Warn ".NET 8 Desktop Runtime not found. Required for installation."
     Write-Info "Downloading .NET 8 Desktop Runtime installer..."
 
     $tempPath = "$env:TEMP\dotnet8-runtime-installer.exe"
@@ -138,7 +138,7 @@ function Install-DotNet8 {
         }
 
         # If silent install failed, try interactive
-        Write-Warning "Silent installation did not complete. Launching interactive installer..."
+        Write-Warn "Silent installation did not complete. Launching interactive installer..."
         Start-Process -FilePath $tempPath -Wait
 
         if (Test-DotNet8Installed) {
@@ -146,11 +146,11 @@ function Install-DotNet8 {
             return $true
         }
 
-        Write-Error ".NET 8 installation failed or was cancelled"
+        Write-Err ".NET 8 installation failed or was cancelled"
         return $false
     }
     catch {
-        Write-Error "Failed to download or install .NET 8: $_"
+        Write-Err "Failed to download or install .NET 8: $_"
         return $false
     }
     finally {
@@ -179,14 +179,14 @@ function Stop-ExistingService {
         }
     }
     catch {
-        Write-Warning "Could not stop service: $_"
+        Write-Warn "Could not stop service: $_"
     }
 
     # Kill any running blocker processes
     Get-Process -Name "STBlocker" -ErrorAction SilentlyContinue | Stop-Process -Force
 }
 
-function Create-Directories {
+function New-Directories {
     Write-Step "Creating installation directories..."
 
     try {
@@ -217,7 +217,7 @@ function Create-Directories {
         return $true
     }
     catch {
-        Write-Error "Failed to create directories: $_"
+        Write-Err "Failed to create directories: $_"
         return $false
     }
 }
@@ -255,23 +255,23 @@ function Copy-ProgramFiles {
                 $copiedCount++
             }
             catch {
-                Write-Error "Failed to copy $file`: $_"
+                Write-Err "Failed to copy ${file}: $_"
             }
         }
         else {
-            Write-Warning "File not found: $sourcePath"
+            Write-Warn "File not found: $sourcePath"
         }
     }
 
     if ($copiedCount -eq 0) {
-        Write-Error "No program files were copied. Please ensure the publish folder contains the built executables."
+        Write-Err "No program files were copied. Please ensure the publish folder contains the built executables."
         return $false
     }
 
     return $true
 }
 
-function Create-BackupCopies {
+function New-BackupCopies {
     Write-Step "Creating backup copies..."
 
     $files = @($ServiceExe, $BlockerExe, $ConfigPanelExe)
@@ -286,7 +286,7 @@ function Create-BackupCopies {
                 Write-Success "Backed up: $file"
             }
             catch {
-                Write-Warning "Failed to backup $file`: $_"
+                Write-Warn "Failed to backup ${file}: $_"
             }
         }
     }
@@ -352,7 +352,7 @@ function Set-FolderPermissions {
         return $true
     }
     catch {
-        Write-Warning "Failed to set folder permissions: $_"
+        Write-Warn "Failed to set folder permissions: $_"
         return $true # Non-fatal
     }
 }
@@ -363,7 +363,7 @@ function Install-WindowsService {
     $servicePath = Join-Path $InstallPath $ServiceExe
 
     if (-not (Test-Path $servicePath)) {
-        Write-Error "Service executable not found at: $servicePath"
+        Write-Err "Service executable not found at: $servicePath"
         return $false
     }
 
@@ -381,7 +381,7 @@ function Install-WindowsService {
         $result = & sc.exe create $ServiceName binPath= "`"$servicePath`"" start= auto DisplayName= "$ServiceDisplayName"
 
         if ($LASTEXITCODE -ne 0) {
-            Write-Error "Failed to create service: $result"
+            Write-Err "Failed to create service: $result"
             return $false
         }
 
@@ -395,7 +395,7 @@ function Install-WindowsService {
         return $true
     }
     catch {
-        Write-Error "Failed to install service: $_"
+        Write-Err "Failed to install service: $_"
         return $false
     }
 }
@@ -413,18 +413,18 @@ function Backup-ServiceConfiguration {
             Write-Success "Service configuration backed up"
         }
         else {
-            Write-Warning "Could not backup service configuration"
+            Write-Warn "Could not backup service configuration"
         }
 
         return $true
     }
     catch {
-        Write-Warning "Failed to backup service configuration: $_"
+        Write-Warn "Failed to backup service configuration: $_"
         return $true # Non-fatal
     }
 }
 
-function Create-ScheduledTasks {
+function New-ScheduledTasks {
     Write-Step "Creating scheduled tasks..."
 
     $tasks = @(
@@ -448,21 +448,21 @@ function Create-ScheduledTasks {
         }
     )
 
-    $checkScript = @"
-`$serviceName = '$ServiceName'
-`$service = Get-Service -Name `$serviceName -ErrorAction SilentlyContinue
-if (`$null -eq `$service) {
-    `$backupReg = '$BackupPath\service.reg'
-    if (Test-Path `$backupReg) {
-        reg import `$backupReg 2>`$null
+    $checkScriptContent = @'
+$serviceName = 'WinDisplayCalibration'
+$service = Get-Service -Name $serviceName -ErrorAction SilentlyContinue
+if ($null -eq $service) {
+    $backupReg = "$env:ProgramData\STGuard\backup\service.reg"
+    if (Test-Path $backupReg) {
+        reg import $backupReg 2>$null
         Start-Sleep -Seconds 2
     }
 }
-`$service = Get-Service -Name `$serviceName -ErrorAction SilentlyContinue
-if (`$null -ne `$service -and `$service.Status -ne 'Running') {
-    Start-Service -Name `$serviceName -ErrorAction SilentlyContinue
+$service = Get-Service -Name $serviceName -ErrorAction SilentlyContinue
+if ($null -ne $service -and $service.Status -ne 'Running') {
+    Start-Service -Name $serviceName -ErrorAction SilentlyContinue
 }
-"@
+'@
 
     foreach ($task in $tasks) {
         try {
@@ -470,42 +470,38 @@ if (`$null -ne `$service -and `$service.Status -ne 'Running') {
             & schtasks.exe /Delete /TN $task.Name /F 2>$null
 
             # Create script file for this task
-            $scriptPath = Join-Path $DataPath "$($task.Name).ps1"
-            $checkScript | Out-File -FilePath $scriptPath -Encoding UTF8 -Force
+            $scriptPath = Join-Path $DataPath ($task.Name + ".ps1")
+            $checkScriptContent | Out-File -FilePath $scriptPath -Encoding ASCII -Force
 
-            # Build schtasks arguments
-            $args = @("/Create", "/TN", $task.Name, "/RU", "SYSTEM", "/RL", "HIGHEST", "/F")
+            # Build schtasks command
+            $trValue = "powershell.exe -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$scriptPath`""
 
             if ($task.Trigger -eq "MINUTE") {
-                $args += @("/SC", "MINUTE", "/MO", $task.Modifier)
+                & schtasks.exe /Create /TN $task.Name /RU "SYSTEM" /RL HIGHEST /F /SC MINUTE /MO $task.Modifier /TR $trValue | Out-Null
             }
             elseif ($task.Trigger -eq "ONLOGON") {
-                $args += @("/SC", "ONLOGON")
+                & schtasks.exe /Create /TN $task.Name /RU "SYSTEM" /RL HIGHEST /F /SC ONLOGON /TR $trValue | Out-Null
             }
             elseif ($task.Trigger -eq "ONSTART") {
-                $args += @("/SC", "ONSTART")
+                & schtasks.exe /Create /TN $task.Name /RU "SYSTEM" /RL HIGHEST /F /SC ONSTART /TR $trValue | Out-Null
             }
-
-            $args += @("/TR", "powershell.exe -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$scriptPath`"")
-
-            & schtasks.exe @args | Out-Null
 
             if ($LASTEXITCODE -eq 0) {
                 Write-Success "Created task: $($task.Name)"
             }
             else {
-                Write-Warning "Failed to create task: $($task.Name)"
+                Write-Warn "Failed to create task: $($task.Name)"
             }
         }
         catch {
-            Write-Warning "Error creating task $($task.Name): $_"
+            Write-Warn "Error creating task $($task.Name): $_"
         }
     }
 
     return $true
 }
 
-function Create-RegistryRunKey {
+function New-RegistryRunKey {
     Write-Step "Creating startup registry entry..."
 
     try {
@@ -517,7 +513,7 @@ function Create-RegistryRunKey {
         return $true
     }
     catch {
-        Write-Warning "Failed to create registry run key: $_"
+        Write-Warn "Failed to create registry run key: $_"
         return $true # Non-fatal
     }
 }
@@ -535,21 +531,21 @@ function Start-ServiceNow {
             return $true
         }
         else {
-            Write-Warning "Service status: $($service.Status)"
+            Write-Warn "Service status: $($service.Status)"
             return $false
         }
     }
     catch {
-        Write-Error "Failed to start service: $_"
+        Write-Err "Failed to start service: $_"
         return $false
     }
 }
 
 function Show-Summary {
-    Write-Host "`n" -NoNewline
-    Write-Host "═══════════════════════════════════════════════════════════════" -ForegroundColor Green
-    Write-Host "                    INSTALLATION COMPLETE                       " -ForegroundColor Green
-    Write-Host "═══════════════════════════════════════════════════════════════" -ForegroundColor Green
+    Write-Host ""
+    Write-Host "=================================================================" -ForegroundColor Green
+    Write-Host "                    INSTALLATION COMPLETE                        " -ForegroundColor Green
+    Write-Host "=================================================================" -ForegroundColor Green
     Write-Host ""
     Write-Host "  Install location: $InstallPath" -ForegroundColor White
     Write-Host "  Data location:    $DataPath" -ForegroundColor White
@@ -567,9 +563,9 @@ function Show-Summary {
 function Main {
     Clear-Host
     Write-Host ""
-    Write-Host "═══════════════════════════════════════════════════════════════" -ForegroundColor Cyan
-    Write-Host "          SIMPLE WINDOWS SCREENTIME INSTALLER                   " -ForegroundColor Cyan
-    Write-Host "═══════════════════════════════════════════════════════════════" -ForegroundColor Cyan
+    Write-Host "=================================================================" -ForegroundColor Cyan
+    Write-Host "          SIMPLE WINDOWS SCREENTIME INSTALLER                    " -ForegroundColor Cyan
+    Write-Host "=================================================================" -ForegroundColor Cyan
     Write-Host ""
 
     # Check/request elevation
@@ -579,7 +575,7 @@ function Main {
 
     # Step 1: Check .NET
     if (-not (Install-DotNet8)) {
-        Write-Error "Cannot proceed without .NET 8 Desktop Runtime"
+        Write-Err "Cannot proceed without .NET 8 Desktop Runtime"
         $success = $false
     }
 
@@ -588,7 +584,7 @@ function Main {
         Stop-ExistingService
 
         # Step 3: Create directories
-        if (-not (Create-Directories)) {
+        if (-not (New-Directories)) {
             $success = $false
         }
     }
@@ -602,7 +598,7 @@ function Main {
 
     if ($success) {
         # Step 5: Create backups
-        Create-BackupCopies
+        New-BackupCopies
 
         # Step 6: Set permissions
         Set-FolderPermissions
@@ -618,10 +614,10 @@ function Main {
         Backup-ServiceConfiguration
 
         # Step 9: Create scheduled tasks
-        Create-ScheduledTasks
+        New-ScheduledTasks
 
         # Step 10: Create registry entry
-        Create-RegistryRunKey
+        New-RegistryRunKey
 
         # Step 11: Start service
         Start-ServiceNow
@@ -631,7 +627,7 @@ function Main {
     }
     else {
         Write-Host ""
-        Write-Error "Installation failed. Please check the errors above."
+        Write-Err "Installation failed. Please check the errors above."
     }
 
     Write-Host ""

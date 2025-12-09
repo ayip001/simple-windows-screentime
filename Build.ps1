@@ -24,17 +24,17 @@ $PublishPath = Join-Path $ScriptDir "publish"
 
 function Write-Step {
     param([string]$Message)
-    Write-Host "`n► $Message" -ForegroundColor Cyan
+    Write-Host "`n==> $Message" -ForegroundColor Cyan
 }
 
 function Write-Success {
     param([string]$Message)
-    Write-Host "✓ $Message" -ForegroundColor Green
+    Write-Host "[OK] $Message" -ForegroundColor Green
 }
 
-function Write-Error {
+function Write-Err {
     param([string]$Message)
-    Write-Host "✗ $Message" -ForegroundColor Red
+    Write-Host "[X] $Message" -ForegroundColor Red
 }
 
 # Check for dotnet CLI
@@ -44,7 +44,7 @@ try {
     Write-Success ".NET SDK version: $dotnetVersion"
 }
 catch {
-    Write-Error ".NET SDK not found. Please install .NET 8 SDK."
+    Write-Err ".NET SDK not found. Please install .NET 8 SDK."
     exit 1
 }
 
@@ -64,7 +64,7 @@ if ($Clean) {
 Write-Step "Restoring NuGet packages..."
 & dotnet restore $SolutionPath --nologo -v q
 if ($LASTEXITCODE -ne 0) {
-    Write-Error "Restore failed"
+    Write-Err "Restore failed"
     exit 1
 }
 Write-Success "Restore complete"
@@ -73,7 +73,7 @@ Write-Success "Restore complete"
 Write-Step "Building solution ($Configuration)..."
 & dotnet build $SolutionPath -c $Configuration --no-restore --nologo
 if ($LASTEXITCODE -ne 0) {
-    Write-Error "Build failed"
+    Write-Err "Build failed"
     exit 1
 }
 Write-Success "Build complete"
@@ -111,7 +111,7 @@ foreach ($project in $projects) {
     & dotnet publish $projectPath -c $Configuration -r win-x64 --self-contained false --nologo -v q
 
     if ($LASTEXITCODE -ne 0) {
-        Write-Error "Publish failed for $($project.Name)"
+        Write-Err "Publish failed for $($project.Name)"
         exit 1
     }
 
@@ -129,7 +129,7 @@ foreach ($project in $projects) {
             Write-Success "Published: $($project.OutputName)"
         }
         else {
-            Write-Error "Could not find published executable for $($project.Name)"
+            Write-Err "Could not find published executable for $($project.Name)"
         }
     }
 }
@@ -140,10 +140,10 @@ Copy-Item -Path (Join-Path $ScriptDir "Install.ps1") -Destination $PublishPath -
 Copy-Item -Path (Join-Path $ScriptDir "Uninstall.ps1") -Destination $PublishPath -Force
 Write-Success "Scripts copied"
 
-Write-Host "`n" -NoNewline
-Write-Host "═══════════════════════════════════════════════════════════════" -ForegroundColor Green
-Write-Host "                      BUILD COMPLETE                            " -ForegroundColor Green
-Write-Host "═══════════════════════════════════════════════════════════════" -ForegroundColor Green
+Write-Host ""
+Write-Host "=================================================================" -ForegroundColor Green
+Write-Host "                      BUILD COMPLETE                             " -ForegroundColor Green
+Write-Host "=================================================================" -ForegroundColor Green
 Write-Host ""
 Write-Host "  Output folder: $PublishPath" -ForegroundColor White
 Write-Host ""

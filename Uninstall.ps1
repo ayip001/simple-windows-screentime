@@ -29,11 +29,11 @@ function Write-ColorOutput {
     $host.UI.RawUI.ForegroundColor = $oldColor
 }
 
-function Write-Success { param([string]$Message) Write-ColorOutput "✓ $Message" Green }
-function Write-Warning { param([string]$Message) Write-ColorOutput "⚠ $Message" Yellow }
-function Write-Error { param([string]$Message) Write-ColorOutput "✗ $Message" Red }
-function Write-Info { param([string]$Message) Write-ColorOutput "  $Message" Cyan }
-function Write-Step { param([string]$Message) Write-ColorOutput "`n► $Message" White }
+function Write-Success { param([string]$Message) Write-ColorOutput "[OK] $Message" Green }
+function Write-Warn { param([string]$Message) Write-ColorOutput "[!] $Message" Yellow }
+function Write-Err { param([string]$Message) Write-ColorOutput "[X] $Message" Red }
+function Write-Info { param([string]$Message) Write-ColorOutput "    $Message" Cyan }
+function Write-Step { param([string]$Message) Write-ColorOutput "`n==> $Message" White }
 
 function Test-Administrator {
     $currentUser = [Security.Principal.WindowsIdentity]::GetCurrent()
@@ -43,7 +43,7 @@ function Test-Administrator {
 
 function Request-Elevation {
     if (-not (Test-Administrator)) {
-        Write-Warning "Requesting administrator privileges..."
+        Write-Warn "Requesting administrator privileges..."
 
         $scriptPath = $MyInvocation.PSCommandPath
         if ([string]::IsNullOrEmpty($scriptPath)) {
@@ -56,7 +56,7 @@ function Request-Elevation {
             Start-Process PowerShell -Verb RunAs -ArgumentList $arguments -Wait
         }
         catch {
-            Write-Error "Failed to elevate. Please run this script as Administrator."
+            Write-Err "Failed to elevate. Please run this script as Administrator."
             Read-Host "Press Enter to exit"
             exit 1
         }
@@ -133,7 +133,7 @@ function Stop-BlockerProcesses {
         }
     }
     catch {
-        Write-Warning "Could not stop blocker processes: $_"
+        Write-Warn "Could not stop blocker processes: $_"
     }
 }
 
@@ -160,7 +160,7 @@ function Stop-AndRemoveService {
         }
     }
     catch {
-        Write-Warning "Error removing service: $_"
+        Write-Warn "Error removing service: $_"
     }
 }
 
@@ -186,7 +186,7 @@ function Remove-ScheduledTasks {
             }
         }
         catch {
-            Write-Warning "Error removing task $taskName`: $_"
+            Write-Warn "Error removing task ${taskName}: $_"
         }
     }
 }
@@ -207,7 +207,7 @@ function Remove-RegistryEntries {
         }
     }
     catch {
-        Write-Warning "Error removing registry entries: $_"
+        Write-Warn "Error removing registry entries: $_"
     }
 }
 
@@ -226,7 +226,7 @@ function Remove-InstallFolder {
             Write-Success "Installation folder removed"
         }
         catch {
-            Write-Warning "Could not fully remove installation folder: $_"
+            Write-Warn "Could not fully remove installation folder: $_"
             Write-Info "You may need to manually delete: $InstallPath"
         }
     }
@@ -250,7 +250,7 @@ function Remove-DataFolder {
             Write-Success "Data folder removed"
         }
         catch {
-            Write-Warning "Could not fully remove data folder: $_"
+            Write-Warn "Could not fully remove data folder: $_"
             Write-Info "You may need to manually delete: $DataPath"
         }
     }
@@ -261,9 +261,9 @@ function Remove-DataFolder {
 
 function Show-PinRequiredError {
     Write-Host ""
-    Write-Host "═══════════════════════════════════════════════════════════════" -ForegroundColor Red
-    Write-Host "                    UNINSTALL BLOCKED                           " -ForegroundColor Red
-    Write-Host "═══════════════════════════════════════════════════════════════" -ForegroundColor Red
+    Write-Host "=================================================================" -ForegroundColor Red
+    Write-Host "                    UNINSTALL BLOCKED                            " -ForegroundColor Red
+    Write-Host "=================================================================" -ForegroundColor Red
     Write-Host ""
     Write-Host "  A PIN is currently set. You must clear your PIN before" -ForegroundColor White
     Write-Host "  uninstalling Screen Time." -ForegroundColor White
@@ -282,10 +282,10 @@ function Show-PinRequiredError {
 }
 
 function Show-Summary {
-    Write-Host "`n" -NoNewline
-    Write-Host "═══════════════════════════════════════════════════════════════" -ForegroundColor Green
-    Write-Host "                    UNINSTALL COMPLETE                          " -ForegroundColor Green
-    Write-Host "═══════════════════════════════════════════════════════════════" -ForegroundColor Green
+    Write-Host ""
+    Write-Host "=================================================================" -ForegroundColor Green
+    Write-Host "                    UNINSTALL COMPLETE                           " -ForegroundColor Green
+    Write-Host "=================================================================" -ForegroundColor Green
     Write-Host ""
     Write-Host "  Simple Windows Screentime has been removed." -ForegroundColor White
     Write-Host ""
@@ -295,9 +295,9 @@ function Show-Summary {
 function Main {
     Clear-Host
     Write-Host ""
-    Write-Host "═══════════════════════════════════════════════════════════════" -ForegroundColor Cyan
-    Write-Host "          SIMPLE WINDOWS SCREENTIME UNINSTALLER                 " -ForegroundColor Cyan
-    Write-Host "═══════════════════════════════════════════════════════════════" -ForegroundColor Cyan
+    Write-Host "=================================================================" -ForegroundColor Cyan
+    Write-Host "          SIMPLE WINDOWS SCREENTIME UNINSTALLER                  " -ForegroundColor Cyan
+    Write-Host "=================================================================" -ForegroundColor Cyan
     Write-Host ""
 
     # Check/request elevation first
