@@ -283,7 +283,7 @@ class Program
                 WriteColor("  [!] Empty response received", ConsoleColor.Yellow);
             }
         }
-        catch (TimeoutException)
+        catch (System.TimeoutException)
         {
             WriteColor("  [X] Connection timed out - service may not be running or IPC not started", ConsoleColor.Red);
         }
