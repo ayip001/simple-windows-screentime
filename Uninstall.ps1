@@ -16,7 +16,7 @@ $DataPath = "$env:ProgramData\STGuard"
 $ConfigPath = "$DataPath\config.json"
 $PipeName = "STG_Pipe_7f3a"
 
-$TaskNames = @("STG_Monitor_1", "STG_Monitor_2", "STG_LogonTrigger", "STG_BootCheck")
+$TaskNames = @("STG_Monitor", "STG_LogonTrigger", "STG_BootCheck")
 
 function Write-ColorOutput {
     param(
@@ -65,39 +65,19 @@ function Request-Elevation {
 }
 
 function Test-PinCleared {
-    # Method 1: Try to query service via named pipe
-    try {
-        $pipeClient = New-Object System.IO.Pipes.NamedPipeClientStream(".", $PipeName, [System.IO.Pipes.PipeDirection]::InOut)
-        $pipeClient.Connect(3000) # 3 second timeout
-
-        $writer = New-Object System.IO.StreamWriter($pipeClient)
-        $reader = New-Object System.IO.StreamReader($pipeClient)
-
-        $writer.AutoFlush = $true
-        $writer.WriteLine('{"type":"get_state"}')
-
-        $response = $reader.ReadLine()
-        $pipeClient.Close()
-
-        if ($response) {
-            $state = $response | ConvertFrom-Json
-            if ($state.is_setup_mode -eq $true) {
-                return $true
-            }
-            else {
-                return $false
-            }
-        }
-    }
-    catch {
-        # Service not responding, fall back to config file check
-    }
-
-    # Method 2: Check config file directly
+    # Check config file directly (most reliable method that won't hang)
+    # The config file is the source of truth for PIN status
     if (Test-Path $ConfigPath) {
         try {
             $config = Get-Content $ConfigPath -Raw | ConvertFrom-Json
-            if ([string]::IsNullOrEmpty($config.pin_hash) -or [string]::IsNullOrEmpty($config.pin_salt)) {
+            # Check both PinHash (C# naming) and pin_hash (JSON naming)
+            $pinHash = $config.PinHash
+            if ($null -eq $pinHash) { $pinHash = $config.pin_hash }
+
+            $pinSalt = $config.PinSalt
+            if ($null -eq $pinSalt) { $pinSalt = $config.pin_salt }
+
+            if ([string]::IsNullOrEmpty($pinHash) -or [string]::IsNullOrEmpty($pinSalt)) {
                 return $true
             }
             else {
@@ -105,6 +85,7 @@ function Test-PinCleared {
             }
         }
         catch {
+            Write-Warn "Could not read config file: $_"
             # Config file unreadable, assume PIN is set for safety
             return $false
         }
