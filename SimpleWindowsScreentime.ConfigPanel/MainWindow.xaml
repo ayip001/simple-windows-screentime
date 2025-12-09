@@ -1,0 +1,282 @@
+<Window x:Class="SimpleWindowsScreentime.ConfigPanel.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Screen Time Settings"
+        Width="500"
+        Height="700"
+        WindowStartupLocation="CenterScreen"
+        ResizeMode="NoResize"
+        Background="#ecf0f1">
+
+    <Grid>
+        <!-- PIN Entry View -->
+        <StackPanel x:Name="PinEntryView"
+                    VerticalAlignment="Center"
+                    HorizontalAlignment="Center"
+                    Visibility="Visible">
+
+            <TextBlock Text="Screen Time Settings"
+                       FontSize="28"
+                       FontWeight="Bold"
+                       Foreground="#2c3e50"
+                       HorizontalAlignment="Center"
+                       Margin="0,0,0,30"/>
+
+            <TextBlock Text="Enter your PIN to access settings:"
+                       FontSize="16"
+                       Foreground="#7f8c8d"
+                       HorizontalAlignment="Center"
+                       Margin="0,0,0,20"/>
+
+            <PasswordBox x:Name="AccessPinBox"
+                         Width="200"
+                         Height="50"
+                         FontSize="24"
+                         MaxLength="4"
+                         HorizontalContentAlignment="Center"
+                         VerticalContentAlignment="Center"
+                         PasswordChanged="AccessPinBox_PasswordChanged"/>
+
+            <TextBlock x:Name="AccessErrorText"
+                       FontSize="14"
+                       Foreground="#e74c3c"
+                       HorizontalAlignment="Center"
+                       Margin="0,15,0,0"
+                       Visibility="Collapsed"/>
+        </StackPanel>
+
+        <!-- Settings View -->
+        <ScrollViewer x:Name="SettingsView"
+                      Visibility="Collapsed"
+                      VerticalScrollBarVisibility="Auto">
+            <StackPanel Margin="30">
+
+                <!-- Header -->
+                <TextBlock Text="Screen Time Settings"
+                           FontSize="28"
+                           FontWeight="Bold"
+                           Foreground="#2c3e50"
+                           Margin="0,0,0,10"/>
+
+                <!-- Status Section -->
+                <Border Background="White"
+                        CornerRadius="8"
+                        Padding="20"
+                        Margin="0,10,0,0">
+                    <StackPanel>
+                        <TextBlock Text="Current Status"
+                                   Style="{StaticResource SectionTitleStyle}"/>
+
+                        <TextBlock x:Name="StatusText"
+                                   FontSize="14"
+                                   Foreground="#34495e"/>
+
+                        <TextBlock x:Name="NextBlockText"
+                                   FontSize="14"
+                                   Foreground="#7f8c8d"
+                                   Margin="0,5,0,0"/>
+
+                        <!-- Recovery Banner -->
+                        <Border x:Name="RecoveryBanner"
+                                Background="#fff3cd"
+                                BorderBrush="#ffc107"
+                                BorderThickness="1"
+                                CornerRadius="5"
+                                Padding="15"
+                                Margin="0,15,0,0"
+                                Visibility="Collapsed">
+                            <StackPanel>
+                                <TextBlock x:Name="RecoveryStatusText"
+                                           FontSize="14"
+                                           Foreground="#856404"/>
+                                <Button Content="Cancel Recovery"
+                                        Style="{StaticResource DangerButtonStyle}"
+                                        Margin="0,10,0,0"
+                                        Click="CancelRecovery_Click"/>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </Border>
+
+                <!-- Schedule Section -->
+                <Border Background="White"
+                        CornerRadius="8"
+                        Padding="20"
+                        Margin="0,20,0,0">
+                    <StackPanel>
+                        <TextBlock Text="Block Schedule"
+                                   Style="{StaticResource SectionTitleStyle}"/>
+
+                        <TextBlock Text="Computer will be blocked during these hours:"
+                                   Style="{StaticResource LabelStyle}"/>
+
+                        <Grid Margin="0,10,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                            </Grid.RowDefinitions>
+
+                            <TextBlock Text="Start Time"
+                                       Grid.Column="0"
+                                       HorizontalAlignment="Center"
+                                       Foreground="#7f8c8d"/>
+                            <TextBlock Text="End Time"
+                                       Grid.Column="2"
+                                       HorizontalAlignment="Center"
+                                       Foreground="#7f8c8d"/>
+
+                            <ComboBox x:Name="StartTimeCombo"
+                                      Grid.Row="1"
+                                      Grid.Column="0"
+                                      Width="120"
+                                      Height="35"
+                                      Margin="0,5,0,0"/>
+                            <TextBlock Text="to"
+                                       Grid.Row="1"
+                                       Grid.Column="1"
+                                       VerticalAlignment="Center"
+                                       Margin="15,5,15,0"
+                                       Foreground="#7f8c8d"/>
+                            <ComboBox x:Name="EndTimeCombo"
+                                      Grid.Row="1"
+                                      Grid.Column="2"
+                                      Width="120"
+                                      Height="35"
+                                      Margin="0,5,0,0"/>
+                        </Grid>
+
+                        <Button Content="Save Schedule"
+                                Style="{StaticResource PrimaryButtonStyle}"
+                                Margin="0,20,0,0"
+                                Click="SaveSchedule_Click"/>
+
+                        <TextBlock x:Name="ScheduleErrorText"
+                                   FontSize="14"
+                                   Foreground="#e74c3c"
+                                   Margin="0,10,0,0"
+                                   Visibility="Collapsed"/>
+                    </StackPanel>
+                </Border>
+
+                <!-- Change PIN Section -->
+                <Border Background="White"
+                        CornerRadius="8"
+                        Padding="20"
+                        Margin="0,20,0,0">
+                    <StackPanel>
+                        <TextBlock Text="Change PIN"
+                                   Style="{StaticResource SectionTitleStyle}"/>
+
+                        <TextBlock Text="Current PIN:"
+                                   Style="{StaticResource LabelStyle}"/>
+                        <PasswordBox x:Name="CurrentPinBox"
+                                     Width="200"
+                                     Height="40"
+                                     MaxLength="4"
+                                     HorizontalAlignment="Left"/>
+
+                        <TextBlock Text="New PIN:"
+                                   Style="{StaticResource LabelStyle}"
+                                   Margin="0,15,0,0"/>
+                        <PasswordBox x:Name="NewPinBox"
+                                     Width="200"
+                                     Height="40"
+                                     MaxLength="4"
+                                     HorizontalAlignment="Left"/>
+
+                        <TextBlock Text="Confirm New PIN:"
+                                   Style="{StaticResource LabelStyle}"
+                                   Margin="0,15,0,0"/>
+                        <PasswordBox x:Name="ConfirmPinBox"
+                                     Width="200"
+                                     Height="40"
+                                     MaxLength="4"
+                                     HorizontalAlignment="Left"/>
+
+                        <Button Content="Change PIN"
+                                Style="{StaticResource PrimaryButtonStyle}"
+                                Margin="0,20,0,0"
+                                Click="ChangePin_Click"/>
+
+                        <TextBlock x:Name="ChangePinErrorText"
+                                   FontSize="14"
+                                   Foreground="#e74c3c"
+                                   Margin="0,10,0,0"
+                                   Visibility="Collapsed"/>
+                    </StackPanel>
+                </Border>
+
+                <!-- Reset Section -->
+                <Border Background="White"
+                        CornerRadius="8"
+                        Padding="20"
+                        Margin="0,20,0,0">
+                    <StackPanel>
+                        <TextBlock Text="Reset All Settings"
+                                   Style="{StaticResource SectionTitleStyle}"
+                                   Foreground="#e74c3c"/>
+
+                        <TextBlock Text="This will clear your PIN and reset all settings to defaults. You will need to set up a new PIN."
+                                   TextWrapping="Wrap"
+                                   Foreground="#7f8c8d"
+                                   Margin="0,0,0,15"/>
+
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="Enter PIN to confirm:"
+                                       VerticalAlignment="Center"
+                                       Margin="0,0,10,0"/>
+                            <PasswordBox x:Name="ResetPinBox"
+                                         Width="120"
+                                         Height="35"
+                                         MaxLength="4"/>
+                        </StackPanel>
+
+                        <Button Content="Reset All Settings"
+                                Style="{StaticResource DangerButtonStyle}"
+                                Margin="0,15,0,0"
+                                Click="ResetAll_Click"/>
+
+                        <TextBlock x:Name="ResetErrorText"
+                                   FontSize="14"
+                                   Foreground="#e74c3c"
+                                   Margin="0,10,0,0"
+                                   Visibility="Collapsed"/>
+                    </StackPanel>
+                </Border>
+
+            </StackPanel>
+        </ScrollViewer>
+
+        <!-- Access Denied View -->
+        <StackPanel x:Name="AccessDeniedView"
+                    VerticalAlignment="Center"
+                    HorizontalAlignment="Center"
+                    Visibility="Collapsed">
+
+            <TextBlock Text="Access Denied"
+                       FontSize="28"
+                       FontWeight="Bold"
+                       Foreground="#e74c3c"
+                       HorizontalAlignment="Center"
+                       Margin="0,0,0,20"/>
+
+            <TextBlock Text="Settings cannot be accessed during block hours."
+                       FontSize="16"
+                       Foreground="#7f8c8d"
+                       HorizontalAlignment="Center"
+                       TextWrapping="Wrap"
+                       TextAlignment="Center"
+                       MaxWidth="350"/>
+
+            <Button Content="Close"
+                    Style="{StaticResource PrimaryButtonStyle}"
+                    Margin="0,30,0,0"
+                    Click="Close_Click"/>
+        </StackPanel>
+    </Grid>
+</Window>
