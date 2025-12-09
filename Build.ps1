@@ -99,6 +99,11 @@ $projects = @(
         Name = "ConfigPanel"
         Path = "SimpleWindowsScreentime.ConfigPanel"
         OutputName = "STConfigPanel.exe"
+    },
+    @{
+        Name = "Debug"
+        Path = "SimpleWindowsScreentime.Debug"
+        OutputName = "STDebug.exe"
     }
 )
 

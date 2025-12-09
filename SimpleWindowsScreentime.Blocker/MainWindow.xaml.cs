@@ -120,6 +120,9 @@ public partial class MainWindow : Window
         await UpdateStateAsync();
     }
 
+    private int _connectionFailures = 0;
+    private const int MaxConnectionFailures = 3;
+
     private async Task UpdateStateAsync()
     {
         try
@@ -129,14 +132,33 @@ public partial class MainWindow : Window
             if (_currentState == null)
             {
                 // Cannot connect to service
-                ShowError("Cannot connect to service");
+                _connectionFailures++;
+                if (_connectionFailures >= MaxConnectionFailures)
+                {
+                    // After multiple failures, exit - don't block without service
+                    Application.Current.Shutdown();
+                    return;
+                }
+                ShowError($"Cannot connect to service (retry {_connectionFailures}/{MaxConnectionFailures})");
                 return;
             }
 
-            // Check if we should show setup mode
+            // Reset failure counter on successful connection
+            _connectionFailures = 0;
+
+            // If we shouldn't be blocking anymore, exit
+            if (!_currentState.IsBlocking || _currentState.TempUnlockActive)
+            {
+                Application.Current.Shutdown();
+                return;
+            }
+
+            // Check if we should show setup mode (shouldn't happen, but handle it)
             if (_currentState.IsSetupMode)
             {
-                ShowSetupView();
+                // In setup mode - exit, we shouldn't be blocking
+                Application.Current.Shutdown();
+                return;
             }
             else
             {
@@ -147,6 +169,12 @@ public partial class MainWindow : Window
         }
         catch (Exception ex)
         {
+            _connectionFailures++;
+            if (_connectionFailures >= MaxConnectionFailures)
+            {
+                Application.Current.Shutdown();
+                return;
+            }
             ShowError($"Error: {ex.Message}");
         }
     }

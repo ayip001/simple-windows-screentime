@@ -1,4 +1,6 @@
 using System.IO.Pipes;
+using System.Security.AccessControl;
+using System.Security.Principal;
 using System.Text;
 using Microsoft.Extensions.Logging;
 using SimpleWindowsScreentime.Shared;
@@ -21,6 +23,9 @@ public class IpcServer
 
     private CancellationTokenSource? _cts;
     private bool _running;
+
+    // Use simple pipe name without Global prefix - .NET handles this
+    private static readonly string PipeNameSimple = Constants.PipeName.Replace(@"Global\", "");
 
     public IpcServer(
         ILogger<IpcServer> logger,
@@ -45,26 +50,45 @@ public class IpcServer
         _cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         _running = true;
 
-        _logger.LogInformation("IPC Server starting on pipe: {PipeName}", Constants.PipeName);
+        _logger.LogInformation("IPC Server starting on pipe: {PipeName}", PipeNameSimple);
 
         while (_running && !_cts.Token.IsCancellationRequested)
         {
+            NamedPipeServerStream? server = null;
             try
             {
-                await using var server = new NamedPipeServerStream(
-                    Constants.PipeName.Replace(@"Global\", ""),
+                // Create pipe with security that allows all users to connect
+                var pipeSecurity = new PipeSecurity();
+                pipeSecurity.AddAccessRule(new PipeAccessRule(
+                    new SecurityIdentifier(WellKnownSidType.WorldSid, null),
+                    PipeAccessRights.ReadWrite,
+                    AccessControlType.Allow));
+                pipeSecurity.AddAccessRule(new PipeAccessRule(
+                    new SecurityIdentifier(WellKnownSidType.LocalSystemSid, null),
+                    PipeAccessRights.FullControl,
+                    AccessControlType.Allow));
+
+                server = NamedPipeServerStreamAcl.Create(
+                    PipeNameSimple,
                     PipeDirection.InOut,
                     NamedPipeServerStream.MaxAllowedServerInstances,
-                    PipeTransmissionMode.Message,
-                    PipeOptions.Asynchronous);
+                    PipeTransmissionMode.Byte,
+                    PipeOptions.Asynchronous,
+                    0, 0,
+                    pipeSecurity);
 
+                _logger.LogDebug("Waiting for IPC client connection...");
                 await server.WaitForConnectionAsync(_cts.Token);
+                _logger.LogDebug("IPC client connected");
 
-                // Handle client in background
-                _ = HandleClientAsync(server, _cts.Token);
+                // Handle client - don't await, let it run in background
+                var clientServer = server;
+                server = null; // Prevent disposal in finally
+                _ = Task.Run(() => HandleClientAsync(clientServer, _cts.Token), _cts.Token);
             }
             catch (OperationCanceledException)
             {
+                _logger.LogInformation("IPC server shutting down");
                 break;
             }
             catch (Exception ex)
@@ -72,25 +96,51 @@ public class IpcServer
                 _logger.LogError(ex, "Error in IPC server loop");
                 await Task.Delay(1000, _cts.Token);
             }
+            finally
+            {
+                server?.Dispose();
+            }
         }
+
+        _logger.LogInformation("IPC Server stopped");
     }
 
     private async Task HandleClientAsync(NamedPipeServerStream server, CancellationToken token)
     {
         try
         {
-            using var reader = new StreamReader(server, Encoding.UTF8, leaveOpen: true);
-            await using var writer = new StreamWriter(server, Encoding.UTF8, leaveOpen: true) { AutoFlush = true };
-
-            while (server.IsConnected && !token.IsCancellationRequested)
+            using (server)
+            using (var reader = new StreamReader(server, Encoding.UTF8, leaveOpen: true))
+            await using (var writer = new StreamWriter(server, Encoding.UTF8, leaveOpen: true) { AutoFlush = true })
             {
-                var line = await reader.ReadLineAsync(token);
-                if (string.IsNullOrEmpty(line))
-                    break;
+                while (server.IsConnected && !token.IsCancellationRequested)
+                {
+                    string? line;
+                    try
+                    {
+                        line = await reader.ReadLineAsync(token);
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        break;
+                    }
 
-                var response = ProcessRequest(line);
-                await writer.WriteLineAsync(response);
+                    if (string.IsNullOrEmpty(line))
+                        break;
+
+                    _logger.LogDebug("IPC received: {Request}", line.Length > 100 ? line[..100] + "..." : line);
+
+                    var response = ProcessRequest(line);
+
+                    _logger.LogDebug("IPC responding: {Response}", response.Length > 100 ? response[..100] + "..." : response);
+
+                    await writer.WriteLineAsync(response);
+                }
             }
+        }
+        catch (IOException ex)
+        {
+            _logger.LogDebug("IPC client disconnected: {Message}", ex.Message);
         }
         catch (Exception ex)
         {
@@ -105,8 +155,11 @@ public class IpcServer
             var request = IpcSerializer.DeserializeRequest(json);
             if (request == null)
             {
+                _logger.LogWarning("Invalid IPC request format: {Json}", json);
                 return IpcSerializer.Serialize(new ErrorResponse("Invalid request format"));
             }
+
+            _logger.LogDebug("Processing IPC request: {Type}", request.Type);
 
             var response = request switch
             {
@@ -280,19 +333,22 @@ public class IpcServer
 
     private IpcResponse HandleSetSchedule(SetScheduleRequest request)
     {
-        // Verify PIN first
-        var result = _pinManager.VerifyPin(request.Pin);
-        if (!result.IsSuccess)
+        // Verify PIN first (skip if in setup mode)
+        if (!_configManager.Config.IsSetupMode)
         {
-            return new PinResultResponse
+            var result = _pinManager.VerifyPin(request.Pin);
+            if (!result.IsSuccess)
             {
-                Success = false,
-                Valid = false,
-                IsLockedOut = result.IsLockedOut,
-                IsRateLimited = result.IsRateLimited,
-                AttemptsRemaining = result.AttemptsRemaining,
-                Error = "Invalid PIN"
-            };
+                return new PinResultResponse
+                {
+                    Success = false,
+                    Valid = false,
+                    IsLockedOut = result.IsLockedOut,
+                    IsRateLimited = result.IsRateLimited,
+                    AttemptsRemaining = result.AttemptsRemaining,
+                    Error = "Invalid PIN"
+                };
+            }
         }
 
         // Validate schedule

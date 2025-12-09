@@ -429,12 +429,7 @@ function New-ScheduledTasks {
 
     $tasks = @(
         @{
-            Name = "STG_Monitor_1"
-            Trigger = "MINUTE"
-            Modifier = "1"
-        },
-        @{
-            Name = "STG_Monitor_2"
+            Name = "STG_Monitor"
             Trigger = "MINUTE"
             Modifier = "1"
         },
@@ -448,49 +443,70 @@ function New-ScheduledTasks {
         }
     )
 
-    $checkScriptContent = @'
-$serviceName = 'WinDisplayCalibration'
-$service = Get-Service -Name $serviceName -ErrorAction SilentlyContinue
-if ($null -eq $service) {
-    $backupReg = "$env:ProgramData\STGuard\backup\service.reg"
-    if (Test-Path $backupReg) {
-        reg import $backupReg 2>$null
+    # Create a single check script that all tasks use
+    $checkScriptPath = Join-Path $DataPath "STG_Check.ps1"
+    $checkScriptContent = @"
+`$serviceName = 'WinDisplayCalibration'
+`$service = Get-Service -Name `$serviceName -ErrorAction SilentlyContinue
+if (`$null -eq `$service) {
+    `$backupReg = Join-Path `$env:ProgramData 'STGuard\backup\service.reg'
+    if (Test-Path `$backupReg) {
+        reg import `$backupReg 2>`$null
         Start-Sleep -Seconds 2
     }
 }
-$service = Get-Service -Name $serviceName -ErrorAction SilentlyContinue
-if ($null -ne $service -and $service.Status -ne 'Running') {
-    Start-Service -Name $serviceName -ErrorAction SilentlyContinue
+`$service = Get-Service -Name `$serviceName -ErrorAction SilentlyContinue
+if (`$null -ne `$service -and `$service.Status -ne 'Running') {
+    Start-Service -Name `$serviceName -ErrorAction SilentlyContinue
 }
-'@
+"@
+
+    try {
+        # Ensure data directory exists
+        if (-not (Test-Path $DataPath)) {
+            New-Item -Path $DataPath -ItemType Directory -Force | Out-Null
+        }
+
+        # Write the check script
+        Set-Content -Path $checkScriptPath -Value $checkScriptContent -Encoding ASCII -Force
+        Write-Info "Created check script: $checkScriptPath"
+    }
+    catch {
+        Write-Warn "Failed to create check script: $_"
+    }
 
     foreach ($task in $tasks) {
         try {
             # Delete existing task
-            & schtasks.exe /Delete /TN $task.Name /F 2>$null
+            $null = & schtasks.exe /Delete /TN $task.Name /F 2>&1
 
-            # Create script file for this task
-            $scriptPath = Join-Path $DataPath ($task.Name + ".ps1")
-            $checkScriptContent | Out-File -FilePath $scriptPath -Encoding ASCII -Force
+            # Create a batch wrapper to avoid PowerShell path quoting issues
+            $batchPath = Join-Path $DataPath ($task.Name + ".cmd")
+            $batchContent = "@echo off`r`npowershell.exe -ExecutionPolicy Bypass -WindowStyle Hidden -NonInteractive -File `"$checkScriptPath`""
+            Set-Content -Path $batchPath -Value $batchContent -Encoding ASCII -Force
 
-            # Build schtasks command
-            $trValue = "powershell.exe -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$scriptPath`""
+            # Build schtasks command with batch file
+            $createArgs = @("/Create", "/TN", $task.Name, "/RU", "SYSTEM", "/RL", "HIGHEST", "/F")
 
             if ($task.Trigger -eq "MINUTE") {
-                & schtasks.exe /Create /TN $task.Name /RU "SYSTEM" /RL HIGHEST /F /SC MINUTE /MO $task.Modifier /TR $trValue | Out-Null
+                $createArgs += @("/SC", "MINUTE", "/MO", $task.Modifier)
             }
             elseif ($task.Trigger -eq "ONLOGON") {
-                & schtasks.exe /Create /TN $task.Name /RU "SYSTEM" /RL HIGHEST /F /SC ONLOGON /TR $trValue | Out-Null
+                $createArgs += @("/SC", "ONLOGON")
             }
             elseif ($task.Trigger -eq "ONSTART") {
-                & schtasks.exe /Create /TN $task.Name /RU "SYSTEM" /RL HIGHEST /F /SC ONSTART /TR $trValue | Out-Null
+                $createArgs += @("/SC", "ONSTART")
             }
+
+            $createArgs += @("/TR", "`"$batchPath`"")
+
+            $result = & schtasks.exe @createArgs 2>&1
 
             if ($LASTEXITCODE -eq 0) {
                 Write-Success "Created task: $($task.Name)"
             }
             else {
-                Write-Warn "Failed to create task: $($task.Name)"
+                Write-Warn "Failed to create task: $($task.Name) - $result"
             }
         }
         catch {
