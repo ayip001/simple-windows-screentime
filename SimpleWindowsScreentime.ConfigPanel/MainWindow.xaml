@@ -169,10 +169,10 @@
                         Padding="20"
                         Margin="0,20,0,0">
                     <StackPanel>
-                        <TextBlock Text="Change PIN"
+                        <TextBlock x:Name="ChangePinTitle" Text="Change PIN"
                                    Style="{StaticResource SectionTitleStyle}"/>
 
-                        <TextBlock Text="Current PIN:"
+                        <TextBlock x:Name="CurrentPinLabel" Text="Current PIN:"
                                    Style="{StaticResource LabelStyle}"/>
                         <PasswordBox x:Name="CurrentPinBox"
                                      Width="200"
@@ -198,7 +198,7 @@
                                      MaxLength="4"
                                      HorizontalAlignment="Left"/>
 
-                        <Button Content="Change PIN"
+                        <Button x:Name="ChangePinButton" Content="Change PIN"
                                 Style="{StaticResource PrimaryButtonStyle}"
                                 Margin="0,20,0,0"
                                 Click="ChangePin_Click"/>

@@ -187,6 +187,22 @@ public partial class MainWindow : Window
             // Populate time combos
             PopulateTimeCombo(StartTimeCombo, config.BlockStartMinutes);
             PopulateTimeCombo(EndTimeCombo, config.BlockEndMinutes);
+
+            // Update PIN section based on setup mode
+            if (_currentState.IsSetupMode)
+            {
+                ChangePinTitle.Text = "Set PIN";
+                CurrentPinLabel.Visibility = Visibility.Collapsed;
+                CurrentPinBox.Visibility = Visibility.Collapsed;
+                ChangePinButton.Content = "Set PIN";
+            }
+            else
+            {
+                ChangePinTitle.Text = "Change PIN";
+                CurrentPinLabel.Visibility = Visibility.Visible;
+                CurrentPinBox.Visibility = Visibility.Visible;
+                ChangePinButton.Content = "Change PIN";
+            }
         }
         catch (Exception ex)
         {
@@ -287,12 +303,6 @@ public partial class MainWindow : Window
             var newPin = NewPinBox.Password;
             var confirmPin = ConfirmPinBox.Password;
 
-            if (string.IsNullOrEmpty(currentPin) || currentPin.Length != 4)
-            {
-                ShowChangePinError("Please enter your current 4-digit PIN");
-                return;
-            }
-
             if (string.IsNullOrEmpty(newPin) || newPin.Length != 4 || !newPin.All(char.IsDigit))
             {
                 ShowChangePinError("New PIN must be exactly 4 digits");
@@ -305,7 +315,23 @@ public partial class MainWindow : Window
                 return;
             }
 
-            var success = await _ipcClient.ChangePinAsync(currentPin, newPin);
+            bool success;
+
+            // In setup mode, use set_pin (no current PIN required)
+            if (_currentState?.IsSetupMode == true)
+            {
+                success = await _ipcClient.SetPinAsync(newPin, confirmPin);
+            }
+            else
+            {
+                // Normal mode - require current PIN
+                if (string.IsNullOrEmpty(currentPin) || currentPin.Length != 4)
+                {
+                    ShowChangePinError("Please enter your current 4-digit PIN");
+                    return;
+                }
+                success = await _ipcClient.ChangePinAsync(currentPin, newPin);
+            }
 
             if (success)
             {
@@ -314,11 +340,21 @@ public partial class MainWindow : Window
                 NewPinBox.Password = "";
                 ConfirmPinBox.Password = "";
                 _verifiedPin = newPin;
-                MessageBox.Show("PIN changed successfully!", "Success", MessageBoxButton.OK, MessageBoxImage.Information);
+
+                var message = _currentState?.IsSetupMode == true
+                    ? "PIN set successfully!"
+                    : "PIN changed successfully!";
+                MessageBox.Show(message, "Success", MessageBoxButton.OK, MessageBoxImage.Information);
+
+                // Refresh state after setting PIN
+                _currentState = await _ipcClient.GetStateAsync();
             }
             else
             {
-                ShowChangePinError("Failed to change PIN. Check your current PIN.");
+                var errorMsg = _currentState?.IsSetupMode == true
+                    ? "Failed to set PIN."
+                    : "Failed to change PIN. Check your current PIN.";
+                ShowChangePinError(errorMsg);
             }
         }
         catch (Exception ex)

@@ -59,6 +59,17 @@ public class IpcClient : IDisposable
         return response?.Success ?? false;
     }
 
+    public async Task<bool> SetPinAsync(string pin, string confirmPin)
+    {
+        var request = new SetPinRequest
+        {
+            Pin = pin,
+            ConfirmPin = confirmPin
+        };
+        var response = await SendRequestAsync<AckResponse>(request);
+        return response?.Success ?? false;
+    }
+
     public async Task<bool> ResetAllAsync(string pin)
     {
         var request = new ResetAllRequest { Pin = pin };
