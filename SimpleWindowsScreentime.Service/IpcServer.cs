@@ -126,92 +126,92 @@ public class IpcServer
         DebugLog("HandleClientAsync started");
         try
         {
-            using (server)
+            DebugLog($"Server.IsConnected: {server.IsConnected}, CanRead: {server.CanRead}, CanWrite: {server.CanWrite}");
+
+            // Read and write directly using the pipe stream to avoid StreamReader/StreamWriter issues
+            var buffer = new byte[4096];
+            var responseBuffer = new byte[8192];
+
+            // Set a read timeout
+            using var readCts = CancellationTokenSource.CreateLinkedTokenSource(token);
+            readCts.CancelAfter(TimeSpan.FromSeconds(30));
+
+            while (server.IsConnected && !token.IsCancellationRequested)
             {
-                // Use explicit buffer sizes and ensure proper flushing
-                using var reader = new StreamReader(server, Encoding.UTF8, detectEncodingFromByteOrderMarks: false, bufferSize: 1024, leaveOpen: true);
-                using var writer = new StreamWriter(server, Encoding.UTF8, bufferSize: 1024, leaveOpen: true);
-                writer.AutoFlush = true;
-
-                DebugLog("Reader/Writer created, waiting for data...");
-
-                // Set a timeout for reading to prevent hanging
-                using var readCts = CancellationTokenSource.CreateLinkedTokenSource(token);
-                readCts.CancelAfter(TimeSpan.FromSeconds(30));
-
-                while (server.IsConnected && !token.IsCancellationRequested)
+                try
                 {
-                    string? line;
-                    try
+                    DebugLog("Reading from pipe...");
+
+                    // Read until we get a newline
+                    var messageBuilder = new StringBuilder();
+                    int bytesRead;
+
+                    do
                     {
-                        DebugLog("Calling ReadLineAsync...");
-                        line = await reader.ReadLineAsync(readCts.Token);
-                        DebugLog($"ReadLineAsync returned: {(line == null ? "null" : $"'{line}'")}");
-                    }
-                    catch (OperationCanceledException)
+                        bytesRead = await server.ReadAsync(buffer, 0, buffer.Length, readCts.Token);
+                        DebugLog($"Read {bytesRead} bytes");
+
+                        if (bytesRead == 0)
+                        {
+                            DebugLog("Client disconnected (0 bytes read)");
+                            return;
+                        }
+
+                        var chunk = Encoding.UTF8.GetString(buffer, 0, bytesRead);
+                        messageBuilder.Append(chunk);
+
+                    } while (bytesRead == buffer.Length && !messageBuilder.ToString().Contains('\n'));
+
+                    var message = messageBuilder.ToString().TrimEnd('\r', '\n');
+                    DebugLog($"Received message: {message}");
+
+                    if (string.IsNullOrEmpty(message))
                     {
-                        DebugLog("IPC read timed out or cancelled");
-                        _logger.LogDebug("IPC read timed out or cancelled");
-                        break;
+                        DebugLog("Empty message, closing connection");
+                        return;
                     }
 
-                    if (string.IsNullOrEmpty(line))
-                    {
-                        DebugLog("Received empty/null line, closing connection");
-                        _logger.LogDebug("IPC received empty line, closing connection");
-                        break;
-                    }
-
-                    DebugLog($"IPC received: {line}");
-                    _logger.LogDebug("IPC received: {Request}", line.Length > 100 ? line[..100] + "..." : line);
-
+                    // Process request
                     string response;
                     try
                     {
-                        response = ProcessRequest(line);
-                        DebugLog($"ProcessRequest returned: {response}");
+                        response = ProcessRequest(message);
+                        DebugLog($"ProcessRequest returned: {(response.Length > 100 ? response[..100] + "..." : response)}");
                     }
                     catch (Exception ex)
                     {
                         DebugLog($"Error processing request: {ex.GetType().Name}: {ex.Message}");
-                        _logger.LogError(ex, "Error processing IPC request");
                         response = IpcSerializer.Serialize(new ErrorResponse($"Internal error: {ex.Message}"));
                     }
 
-                    _logger.LogDebug("IPC responding: {Response}", response.Length > 100 ? response[..100] + "..." : response);
+                    // Write response with newline
+                    var responseBytes = Encoding.UTF8.GetBytes(response + "\n");
+                    DebugLog($"Writing {responseBytes.Length} bytes response...");
 
-                    try
-                    {
-                        DebugLog("Writing response...");
-                        await writer.WriteLineAsync(response);
-                        DebugLog("Flushing writer...");
-                        await writer.FlushAsync();
-                        DebugLog("Flushing server pipe...");
-                        await server.FlushAsync();
-                        DebugLog("Response sent successfully");
-                    }
-                    catch (Exception ex)
-                    {
-                        DebugLog($"Error writing response: {ex.GetType().Name}: {ex.Message}");
-                        _logger.LogError(ex, "Error writing IPC response");
-                        break;
-                    }
+                    await server.WriteAsync(responseBytes, 0, responseBytes.Length, token);
+                    await server.FlushAsync(token);
+
+                    DebugLog("Response sent successfully");
 
                     // Reset timeout for next read
                     readCts.CancelAfter(TimeSpan.FromSeconds(30));
                 }
+                catch (OperationCanceledException)
+                {
+                    DebugLog("Read operation cancelled/timed out");
+                    break;
+                }
             }
-            DebugLog("HandleClientAsync completed normally");
+
+            DebugLog("HandleClientAsync loop ended normally");
         }
         catch (IOException ex)
         {
             DebugLog($"IOException in HandleClientAsync: {ex.Message}");
-            _logger.LogDebug("IPC client disconnected: {Message}", ex.Message);
         }
         catch (Exception ex)
         {
             DebugLog($"Exception in HandleClientAsync: {ex.GetType().Name}: {ex.Message}\n{ex.StackTrace}");
-            _logger.LogError(ex, "Error handling IPC client");
         }
     }
 
