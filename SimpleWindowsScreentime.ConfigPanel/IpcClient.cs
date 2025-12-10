@@ -9,6 +9,8 @@ namespace SimpleWindowsScreentime.ConfigPanel;
 public class IpcClient : IDisposable
 {
     private const int TimeoutMs = 5000;
+    // UTF8 encoding WITHOUT BOM - critical for pipe communication
+    private static readonly Encoding Utf8NoBom = new UTF8Encoding(false);
 
     public async Task<StateResponse?> GetStateAsync()
     {
@@ -84,8 +86,8 @@ public class IpcClient : IDisposable
             using var cts = new CancellationTokenSource(TimeoutMs);
             await client.ConnectAsync(cts.Token);
 
-            using var reader = new StreamReader(client, Encoding.UTF8, leaveOpen: true);
-            using var writer = new StreamWriter(client, Encoding.UTF8, leaveOpen: true);
+            using var reader = new StreamReader(client, Utf8NoBom, leaveOpen: true);
+            using var writer = new StreamWriter(client, Utf8NoBom, leaveOpen: true);
             writer.AutoFlush = true;
 
             var json = IpcSerializer.Serialize(request);

@@ -15,6 +15,8 @@ class Program
     private static readonly string PipeName = Constants.PipeName.Replace(@"Global\", "");
     private static bool _debugModeActive = false;
     private static string? _debugToken = null;
+    // UTF8 encoding WITHOUT BOM - critical for pipe communication
+    private static readonly Encoding Utf8NoBom = new UTF8Encoding(false);
 
     static async Task Main(string[] args)
     {
@@ -263,8 +265,8 @@ class Program
 
             WriteColor("  [OK] Connected to pipe!", ConsoleColor.Green);
 
-            using var reader = new StreamReader(client, Encoding.UTF8, leaveOpen: true);
-            using var writer = new StreamWriter(client, Encoding.UTF8, leaveOpen: true);
+            using var reader = new StreamReader(client, Utf8NoBom, leaveOpen: true);
+            using var writer = new StreamWriter(client, Utf8NoBom, leaveOpen: true);
             writer.AutoFlush = true;
 
             Console.WriteLine("  Sending get_state request...");
@@ -530,16 +532,20 @@ class Program
         {
             using var client = new NamedPipeClientStream(".", PipeName, PipeDirection.InOut, PipeOptions.Asynchronous);
 
-            var cts = new CancellationTokenSource(5000);
+            using var cts = new CancellationTokenSource(5000);
             await client.ConnectAsync(cts.Token);
 
-            using var reader = new StreamReader(client, Encoding.UTF8, leaveOpen: true);
-            await using var writer = new StreamWriter(client, Encoding.UTF8, leaveOpen: true) { AutoFlush = true };
+            using var reader = new StreamReader(client, Utf8NoBom, leaveOpen: true);
+            using var writer = new StreamWriter(client, Utf8NoBom, leaveOpen: true);
+            writer.AutoFlush = true;
 
             var json = IpcSerializer.Serialize(request);
             await writer.WriteLineAsync(json);
+            await writer.FlushAsync();
+            await client.FlushAsync();
 
-            var responseLine = await reader.ReadLineAsync();
+            using var readCts = new CancellationTokenSource(5000);
+            var responseLine = await reader.ReadLineAsync(readCts.Token);
             if (string.IsNullOrEmpty(responseLine))
                 return null;
 
