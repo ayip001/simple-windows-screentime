@@ -188,20 +188,30 @@ public partial class MainWindow : Window
             PopulateTimeCombo(StartTimeCombo, config.BlockStartMinutes);
             PopulateTimeCombo(EndTimeCombo, config.BlockEndMinutes);
 
-            // Update PIN section based on setup mode
+            // Update UI based on setup mode
             if (_currentState.IsSetupMode)
             {
+                // PIN section: show "Set PIN" mode
                 ChangePinTitle.Text = "Set PIN";
                 CurrentPinLabel.Visibility = Visibility.Collapsed;
                 CurrentPinBox.Visibility = Visibility.Collapsed;
                 ChangePinButton.Content = "Set PIN";
+
+                // Schedule section: hide PIN requirement in setup mode
+                SchedulePinLabel.Visibility = Visibility.Collapsed;
+                SchedulePinBox.Visibility = Visibility.Collapsed;
             }
             else
             {
+                // PIN section: show "Change PIN" mode
                 ChangePinTitle.Text = "Change PIN";
                 CurrentPinLabel.Visibility = Visibility.Visible;
                 CurrentPinBox.Visibility = Visibility.Visible;
                 ChangePinButton.Content = "Change PIN";
+
+                // Schedule section: require PIN
+                SchedulePinLabel.Visibility = Visibility.Visible;
+                SchedulePinBox.Visibility = Visibility.Visible;
             }
         }
         catch (Exception ex)
@@ -273,20 +283,31 @@ public partial class MainWindow : Window
             var startMinutes = (int)startItem.Tag;
             var endMinutes = (int)endItem.Tag;
 
-            // For setup mode, use empty PIN (server will allow it)
-            var pin = _verifiedPin ?? "";
+            // Get PIN from schedule section input
+            // In setup mode, empty PIN is allowed
+            var pin = SchedulePinBox.Password;
+            if (_currentState?.IsSetupMode != true)
+            {
+                // Not in setup mode - require PIN
+                if (string.IsNullOrEmpty(pin) || pin.Length != 4)
+                {
+                    ShowScheduleError("Please enter your 4-digit PIN");
+                    return;
+                }
+            }
 
             var success = await _ipcClient.SetScheduleAsync(pin, startMinutes, endMinutes);
 
             if (success)
             {
                 ScheduleErrorText.Visibility = Visibility.Collapsed;
+                SchedulePinBox.Password = "";
                 MessageBox.Show("Schedule saved successfully!", "Success", MessageBoxButton.OK, MessageBoxImage.Information);
                 await LoadSettingsAsync();
             }
             else
             {
-                ShowScheduleError("Failed to save schedule");
+                ShowScheduleError("Failed to save schedule. Check your PIN.");
             }
         }
         catch (Exception ex)
@@ -346,8 +367,8 @@ public partial class MainWindow : Window
                     : "PIN changed successfully!";
                 MessageBox.Show(message, "Success", MessageBoxButton.OK, MessageBoxImage.Information);
 
-                // Refresh state after setting PIN
-                _currentState = await _ipcClient.GetStateAsync();
+                // Refresh UI after setting PIN (updates setup mode state)
+                await LoadSettingsAsync();
             }
             else
             {
