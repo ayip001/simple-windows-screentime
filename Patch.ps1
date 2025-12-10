@@ -48,51 +48,9 @@ if (-not (Test-Administrator)) {
     exit 1
 }
 
-# Step 1: Quick uninstall (force, no PIN check)
-Write-Step "Stopping service and processes..."
-
-# Stop service first (before killing processes, as service may restart blocker)
-$service = Get-Service -Name "WinDisplayCalibration" -ErrorAction SilentlyContinue
-if ($service) {
-    if ($service.Status -eq 'Running') {
-        Write-Host "    Stopping service..."
-        Stop-Service -Name "WinDisplayCalibration" -Force -ErrorAction SilentlyContinue
-        # Wait for service to actually stop
-        $timeout = 10
-        while ($timeout -gt 0) {
-            $service = Get-Service -Name "WinDisplayCalibration" -ErrorAction SilentlyContinue
-            if (-not $service -or $service.Status -eq 'Stopped') { break }
-            Start-Sleep -Seconds 1
-            $timeout--
-        }
-    }
-    # Delete service
-    & sc.exe delete "WinDisplayCalibration" 2>$null | Out-Null
-    Start-Sleep -Seconds 1
-    Write-Success "Service stopped and removed"
-}
-else {
-    Write-Host "    Service not found (clean install)"
-}
-
-# Kill any remaining processes
-$processNames = @("STBlocker", "STConfigPanel", "WinDisplayCalibration")
-foreach ($procName in $processNames) {
-    $procs = Get-Process -Name $procName -ErrorAction SilentlyContinue
-    if ($procs) {
-        $procs | Stop-Process -Force -ErrorAction SilentlyContinue
-        # Wait for process to actually terminate
-        Start-Sleep -Milliseconds 500
-    }
-}
-Write-Success "Processes terminated"
-
-# Remove scheduled tasks
-$taskNames = @("STG_Monitor", "STG_LogonTrigger", "STG_BootCheck")
-foreach ($taskName in $taskNames) {
-    Unregister-ScheduledTask -TaskName $taskName -Confirm:$false -ErrorAction SilentlyContinue
-}
-Write-Success "Scheduled tasks removed"
+# Step 1: Run uninstall script
+Write-Step "Running uninstall..."
+"yes" | & powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$ScriptDir\Uninstall.ps1"
 
 # Step 2: Build (unless skipped)
 if (-not $SkipBuild) {
