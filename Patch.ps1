@@ -94,6 +94,22 @@ foreach ($taskName in $taskNames) {
 }
 Write-Success "Scheduled tasks removed"
 
+# Remove installation folder (take ownership first to ensure we can delete locked files)
+$InstallPath = "$env:ProgramFiles\SimpleWindowsScreentime"
+if (Test-Path $InstallPath) {
+    Write-Host "    Removing installation folder..."
+    try {
+        & takeown.exe /F $InstallPath /R /A /D Y 2>$null | Out-Null
+        & icacls.exe $InstallPath /reset /T /Q 2>$null | Out-Null
+        & icacls.exe $InstallPath /grant "Administrators:F" /T /Q 2>$null | Out-Null
+        Remove-Item -Path $InstallPath -Recurse -Force -ErrorAction Stop
+        Write-Success "Installation folder removed"
+    }
+    catch {
+        Write-Err "Could not remove installation folder: $_"
+    }
+}
+
 # Step 2: Build (unless skipped)
 if (-not $SkipBuild) {
     Write-Step "Building solution..."

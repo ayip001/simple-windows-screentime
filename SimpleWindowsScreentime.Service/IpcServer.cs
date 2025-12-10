@@ -460,18 +460,9 @@ public class IpcServer
 
     private IpcResponse HandleCheckAccess()
     {
-        var isBlocking = _scheduleChecker.IsWithinBlockWindow();
-        var hasUnlock = _unlockManager.HasActiveUnlock();
-
-        if (isBlocking && !hasUnlock)
-        {
-            return new AccessCheckResponse
-            {
-                Allowed = false,
-                Reason = "Currently in block period"
-            };
-        }
-
+        // Always allow ConfigPanel access - if blocking is active, the blocker
+        // will handle it. This prevents the ConfigPanel from being inaccessible
+        // after a fresh install when the blocker isn't running yet.
         return new AccessCheckResponse { Allowed = true };
     }
 
