@@ -45,12 +45,26 @@ public class IpcServer
         _blockerManager = blockerManager;
     }
 
+    // Debug log file for troubleshooting IPC issues
+    private static readonly string DebugLogPath = Path.Combine(Constants.ProgramDataPath, "ipc_debug.log");
+
+    private void DebugLog(string message)
+    {
+        try
+        {
+            var timestamp = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff");
+            File.AppendAllText(DebugLogPath, $"[{timestamp}] {message}\n");
+        }
+        catch { /* ignore logging errors */ }
+    }
+
     public async Task StartAsync(CancellationToken cancellationToken)
     {
         _cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         _running = true;
 
         _logger.LogInformation("IPC Server starting on pipe: {PipeName}", PipeNameSimple);
+        DebugLog($"IPC Server starting on pipe: {PipeNameSimple}");
 
         while (_running && !_cts.Token.IsCancellationRequested)
         {
@@ -77,9 +91,9 @@ public class IpcServer
                     0, 0,
                     pipeSecurity);
 
-                _logger.LogDebug("Waiting for IPC client connection...");
+                DebugLog("Waiting for client connection...");
                 await server.WaitForConnectionAsync(_cts.Token);
-                _logger.LogDebug("IPC client connected");
+                DebugLog("Client connected!");
 
                 // Handle client - don't await, let it run in background
                 var clientServer = server;
@@ -88,11 +102,12 @@ public class IpcServer
             }
             catch (OperationCanceledException)
             {
-                _logger.LogInformation("IPC server shutting down");
+                DebugLog("IPC server shutting down (cancelled)");
                 break;
             }
             catch (Exception ex)
             {
+                DebugLog($"Error in IPC server loop: {ex.GetType().Name}: {ex.Message}");
                 _logger.LogError(ex, "Error in IPC server loop");
                 await Task.Delay(1000, _cts.Token);
             }
@@ -102,11 +117,13 @@ public class IpcServer
             }
         }
 
+        DebugLog("IPC Server stopped");
         _logger.LogInformation("IPC Server stopped");
     }
 
     private async Task HandleClientAsync(NamedPipeServerStream server, CancellationToken token)
     {
+        DebugLog("HandleClientAsync started");
         try
         {
             using (server)
@@ -115,6 +132,8 @@ public class IpcServer
                 using var reader = new StreamReader(server, Encoding.UTF8, detectEncodingFromByteOrderMarks: false, bufferSize: 1024, leaveOpen: true);
                 using var writer = new StreamWriter(server, Encoding.UTF8, bufferSize: 1024, leaveOpen: true);
                 writer.AutoFlush = true;
+
+                DebugLog("Reader/Writer created, waiting for data...");
 
                 // Set a timeout for reading to prevent hanging
                 using var readCts = CancellationTokenSource.CreateLinkedTokenSource(token);
@@ -125,29 +144,36 @@ public class IpcServer
                     string? line;
                     try
                     {
+                        DebugLog("Calling ReadLineAsync...");
                         line = await reader.ReadLineAsync(readCts.Token);
+                        DebugLog($"ReadLineAsync returned: {(line == null ? "null" : $"'{line}'")}");
                     }
                     catch (OperationCanceledException)
                     {
+                        DebugLog("IPC read timed out or cancelled");
                         _logger.LogDebug("IPC read timed out or cancelled");
                         break;
                     }
 
                     if (string.IsNullOrEmpty(line))
                     {
+                        DebugLog("Received empty/null line, closing connection");
                         _logger.LogDebug("IPC received empty line, closing connection");
                         break;
                     }
 
+                    DebugLog($"IPC received: {line}");
                     _logger.LogDebug("IPC received: {Request}", line.Length > 100 ? line[..100] + "..." : line);
 
                     string response;
                     try
                     {
                         response = ProcessRequest(line);
+                        DebugLog($"ProcessRequest returned: {response}");
                     }
                     catch (Exception ex)
                     {
+                        DebugLog($"Error processing request: {ex.GetType().Name}: {ex.Message}");
                         _logger.LogError(ex, "Error processing IPC request");
                         response = IpcSerializer.Serialize(new ErrorResponse($"Internal error: {ex.Message}"));
                     }
@@ -156,12 +182,17 @@ public class IpcServer
 
                     try
                     {
+                        DebugLog("Writing response...");
                         await writer.WriteLineAsync(response);
-                        await writer.FlushAsync(); // Explicit flush
-                        await server.FlushAsync(); // Flush the pipe too
+                        DebugLog("Flushing writer...");
+                        await writer.FlushAsync();
+                        DebugLog("Flushing server pipe...");
+                        await server.FlushAsync();
+                        DebugLog("Response sent successfully");
                     }
                     catch (Exception ex)
                     {
+                        DebugLog($"Error writing response: {ex.GetType().Name}: {ex.Message}");
                         _logger.LogError(ex, "Error writing IPC response");
                         break;
                     }
@@ -170,13 +201,16 @@ public class IpcServer
                     readCts.CancelAfter(TimeSpan.FromSeconds(30));
                 }
             }
+            DebugLog("HandleClientAsync completed normally");
         }
         catch (IOException ex)
         {
+            DebugLog($"IOException in HandleClientAsync: {ex.Message}");
             _logger.LogDebug("IPC client disconnected: {Message}", ex.Message);
         }
         catch (Exception ex)
         {
+            DebugLog($"Exception in HandleClientAsync: {ex.GetType().Name}: {ex.Message}\n{ex.StackTrace}");
             _logger.LogError(ex, "Error handling IPC client");
         }
     }
