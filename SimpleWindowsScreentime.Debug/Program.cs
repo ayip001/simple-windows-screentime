@@ -43,6 +43,7 @@ class Program
             Console.WriteLine("  7. Kill blocker process");
             Console.WriteLine("  8. Check scheduled tasks");
             Console.WriteLine("  9. Restart service");
+            Console.WriteLine("  A. Test check_access (ConfigPanel access check)");
             if (_debugModeActive)
             {
                 WriteColor("  B. [BACKDOOR] Disable blocking temporarily", ConsoleColor.Magenta);
@@ -84,6 +85,9 @@ class Program
                     break;
                 case "9":
                     RestartService();
+                    break;
+                case "A":
+                    await TestCheckAccessAsync();
                     break;
                 case "B" when _debugModeActive:
                     await DisableBlockingTemporarilyAsync();
@@ -182,6 +186,38 @@ class Program
             }
 
             WriteColor("  [OK] IPC communication successful", ConsoleColor.Green);
+        }
+        catch (Exception ex)
+        {
+            WriteColor($"  [X] Error: {ex.Message}", ConsoleColor.Red);
+        }
+    }
+
+    static async Task TestCheckAccessAsync()
+    {
+        WriteColor("==> Testing check_access (ConfigPanel access check)", ConsoleColor.Cyan);
+
+        try
+        {
+            var response = await SendIpcRequestAsync<AccessCheckResponse>(new CheckAccessRequest());
+
+            if (response == null)
+            {
+                WriteColor("  [X] No response from service", ConsoleColor.Red);
+                return;
+            }
+
+            Console.WriteLine($"  Allowed: {response.Allowed}");
+            Console.WriteLine($"  Reason:  {response.Reason ?? "(none)"}");
+
+            if (response.Allowed)
+            {
+                WriteColor("  [OK] ConfigPanel access is ALLOWED", ConsoleColor.Green);
+            }
+            else
+            {
+                WriteColor("  [X] ConfigPanel access is DENIED", ConsoleColor.Red);
+            }
         }
         catch (Exception ex)
         {
