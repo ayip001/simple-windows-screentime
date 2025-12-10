@@ -258,19 +258,23 @@ class Program
 
             Console.WriteLine("  Attempting to connect (5 second timeout)...");
 
-            var cts = new CancellationTokenSource(5000);
-            await client.ConnectAsync(cts.Token);
+            using var connectCts = new CancellationTokenSource(5000);
+            await client.ConnectAsync(connectCts.Token);
 
             WriteColor("  [OK] Connected to pipe!", ConsoleColor.Green);
 
             using var reader = new StreamReader(client, Encoding.UTF8, leaveOpen: true);
-            await using var writer = new StreamWriter(client, Encoding.UTF8, leaveOpen: true) { AutoFlush = true };
+            using var writer = new StreamWriter(client, Encoding.UTF8, leaveOpen: true);
+            writer.AutoFlush = true;
 
             Console.WriteLine("  Sending get_state request...");
             await writer.WriteLineAsync("{\"type\":\"get_state\"}");
+            await writer.FlushAsync();
+            await client.FlushAsync();
 
-            Console.WriteLine("  Waiting for response...");
-            var response = await reader.ReadLineAsync();
+            Console.WriteLine("  Waiting for response (5 second timeout)...");
+            using var readCts = new CancellationTokenSource(5000);
+            var response = await reader.ReadLineAsync(readCts.Token);
 
             if (!string.IsNullOrEmpty(response))
             {
@@ -282,6 +286,10 @@ class Program
             {
                 WriteColor("  [!] Empty response received", ConsoleColor.Yellow);
             }
+        }
+        catch (OperationCanceledException)
+        {
+            WriteColor("  [X] Operation timed out - service may not be responding to IPC", ConsoleColor.Red);
         }
         catch (System.TimeoutException)
         {

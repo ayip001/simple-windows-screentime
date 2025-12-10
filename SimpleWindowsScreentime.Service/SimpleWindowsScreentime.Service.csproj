@@ -9,6 +9,9 @@
     <SelfContained>false</SelfContained>
     <OutputType>Exe</OutputType>
     <AssemblyName>WinDisplayCalibration</AssemblyName>
+    <!-- Fix single-file publishing path resolution issues -->
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <IncludeAllContentForSelfExtract>true</IncludeAllContentForSelfExtract>
   </PropertyGroup>
 
   <ItemGroup>

@@ -110,31 +110,64 @@ public class IpcServer
         try
         {
             using (server)
-            using (var reader = new StreamReader(server, Encoding.UTF8, leaveOpen: true))
-            await using (var writer = new StreamWriter(server, Encoding.UTF8, leaveOpen: true) { AutoFlush = true })
             {
+                // Use explicit buffer sizes and ensure proper flushing
+                using var reader = new StreamReader(server, Encoding.UTF8, detectEncodingFromByteOrderMarks: false, bufferSize: 1024, leaveOpen: true);
+                using var writer = new StreamWriter(server, Encoding.UTF8, bufferSize: 1024, leaveOpen: true);
+                writer.AutoFlush = true;
+
+                // Set a timeout for reading to prevent hanging
+                using var readCts = CancellationTokenSource.CreateLinkedTokenSource(token);
+                readCts.CancelAfter(TimeSpan.FromSeconds(30));
+
                 while (server.IsConnected && !token.IsCancellationRequested)
                 {
                     string? line;
                     try
                     {
-                        line = await reader.ReadLineAsync(token);
+                        line = await reader.ReadLineAsync(readCts.Token);
                     }
                     catch (OperationCanceledException)
                     {
+                        _logger.LogDebug("IPC read timed out or cancelled");
                         break;
                     }
 
                     if (string.IsNullOrEmpty(line))
+                    {
+                        _logger.LogDebug("IPC received empty line, closing connection");
                         break;
+                    }
 
                     _logger.LogDebug("IPC received: {Request}", line.Length > 100 ? line[..100] + "..." : line);
 
-                    var response = ProcessRequest(line);
+                    string response;
+                    try
+                    {
+                        response = ProcessRequest(line);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Error processing IPC request");
+                        response = IpcSerializer.Serialize(new ErrorResponse($"Internal error: {ex.Message}"));
+                    }
 
                     _logger.LogDebug("IPC responding: {Response}", response.Length > 100 ? response[..100] + "..." : response);
 
-                    await writer.WriteLineAsync(response);
+                    try
+                    {
+                        await writer.WriteLineAsync(response);
+                        await writer.FlushAsync(); // Explicit flush
+                        await server.FlushAsync(); // Flush the pipe too
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Error writing IPC response");
+                        break;
+                    }
+
+                    // Reset timeout for next read
+                    readCts.CancelAfter(TimeSpan.FromSeconds(30));
                 }
             }
         }
