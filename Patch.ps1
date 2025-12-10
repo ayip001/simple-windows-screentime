@@ -51,23 +51,41 @@ if (-not (Test-Administrator)) {
 # Step 1: Quick uninstall (force, no PIN check)
 Write-Step "Stopping service and processes..."
 
-# Kill blocker
-Get-Process -Name "STBlocker" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
-Get-Process -Name "STConfigPanel" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
-
-# Stop and remove service
+# Stop service first (before killing processes, as service may restart blocker)
 $service = Get-Service -Name "WinDisplayCalibration" -ErrorAction SilentlyContinue
 if ($service) {
     if ($service.Status -eq 'Running') {
+        Write-Host "    Stopping service..."
         Stop-Service -Name "WinDisplayCalibration" -Force -ErrorAction SilentlyContinue
-        Start-Sleep -Seconds 2
+        # Wait for service to actually stop
+        $timeout = 10
+        while ($timeout -gt 0) {
+            $service = Get-Service -Name "WinDisplayCalibration" -ErrorAction SilentlyContinue
+            if (-not $service -or $service.Status -eq 'Stopped') { break }
+            Start-Sleep -Seconds 1
+            $timeout--
+        }
     }
+    # Delete service
     & sc.exe delete "WinDisplayCalibration" 2>$null | Out-Null
+    Start-Sleep -Seconds 1
     Write-Success "Service stopped and removed"
 }
 else {
     Write-Host "    Service not found (clean install)"
 }
+
+# Kill any remaining processes
+$processNames = @("STBlocker", "STConfigPanel", "WinDisplayCalibration")
+foreach ($procName in $processNames) {
+    $procs = Get-Process -Name $procName -ErrorAction SilentlyContinue
+    if ($procs) {
+        $procs | Stop-Process -Force -ErrorAction SilentlyContinue
+        # Wait for process to actually terminate
+        Start-Sleep -Milliseconds 500
+    }
+}
+Write-Success "Processes terminated"
 
 # Remove scheduled tasks
 $taskNames = @("STG_Monitor", "STG_LogonTrigger", "STG_BootCheck")
