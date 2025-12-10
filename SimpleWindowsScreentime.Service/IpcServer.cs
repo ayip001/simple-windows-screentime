@@ -244,6 +244,13 @@ public class IpcServer
                 _ => new ErrorResponse("Unknown request type")
             };
 
+            // Debug: log the response details before serialization
+            DebugLog($"Response type: {response.GetType().Name}");
+            if (response is AccessCheckResponse acr)
+            {
+                DebugLog($"AccessCheckResponse.Allowed = {acr.Allowed}");
+            }
+
             return IpcSerializer.Serialize(response);
         }
         catch (Exception ex)
