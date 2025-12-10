@@ -13,7 +13,8 @@ public static class IpcSerializer
 
     public static string Serialize<T>(T message) where T : class
     {
-        return JsonSerializer.Serialize(message, _options);
+        // Use runtime type to properly serialize derived class properties
+        return JsonSerializer.Serialize(message, message.GetType(), _options);
     }
 
     public static IpcRequest? DeserializeRequest(string json)
