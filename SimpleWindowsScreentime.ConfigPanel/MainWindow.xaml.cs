@@ -1,5 +1,7 @@
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
+using System.Windows.Threading;
 using SimpleWindowsScreentime.Shared.IPC;
 using SimpleWindowsScreentime.Shared.Time;
 
@@ -10,6 +12,8 @@ public partial class MainWindow : Window
     private readonly IpcClient _ipcClient;
     private string? _verifiedPin;
     private StateResponse? _currentState;
+    private DispatcherTimer? _inactivityTimer;
+    private const int InactivityTimeoutMinutes = 3;
 
     public MainWindow()
     {
@@ -17,6 +21,9 @@ public partial class MainWindow : Window
         _ipcClient = new IpcClient();
 
         Loaded += MainWindow_Loaded;
+
+        // Set up inactivity detection
+        InputManager.Current.PreProcessInput += OnActivity;
     }
 
     private async void MainWindow_Loaded(object sender, RoutedEventArgs e)
@@ -77,6 +84,48 @@ public partial class MainWindow : Window
         PinEntryView.Visibility = Visibility.Collapsed;
         SettingsView.Visibility = Visibility.Visible;
         AccessDeniedView.Visibility = Visibility.Collapsed;
+        StartInactivityTimer();
+    }
+
+    private void OnActivity(object sender, PreProcessInputEventArgs e)
+    {
+        // Reset inactivity timer on any input
+        if (_inactivityTimer != null && SettingsView.Visibility == Visibility.Visible)
+        {
+            _inactivityTimer.Stop();
+            _inactivityTimer.Start();
+        }
+    }
+
+    private void StartInactivityTimer()
+    {
+        _inactivityTimer?.Stop();
+        _inactivityTimer = new DispatcherTimer
+        {
+            Interval = TimeSpan.FromMinutes(InactivityTimeoutMinutes)
+        };
+        _inactivityTimer.Tick += OnInactivityTimeout;
+        _inactivityTimer.Start();
+    }
+
+    private void StopInactivityTimer()
+    {
+        _inactivityTimer?.Stop();
+        _inactivityTimer = null;
+    }
+
+    private void OnInactivityTimeout(object? sender, EventArgs e)
+    {
+        StopInactivityTimer();
+
+        // Only lock if we're in settings view and not in setup mode
+        if (SettingsView.Visibility == Visibility.Visible && _currentState?.IsSetupMode != true)
+        {
+            _verifiedPin = null;
+            AccessPinBox.Password = "";
+            AccessErrorText.Visibility = Visibility.Collapsed;
+            ShowPinEntry();
+        }
     }
 
     private void ShowAccessDenied()
@@ -188,30 +237,20 @@ public partial class MainWindow : Window
             PopulateTimeCombo(StartTimeCombo, config.BlockStartMinutes);
             PopulateTimeCombo(EndTimeCombo, config.BlockEndMinutes);
 
-            // Update UI based on setup mode
+            // Update PIN section based on setup mode
             if (_currentState.IsSetupMode)
             {
-                // PIN section: show "Set PIN" mode
                 ChangePinTitle.Text = "Set PIN";
                 CurrentPinLabel.Visibility = Visibility.Collapsed;
                 CurrentPinBox.Visibility = Visibility.Collapsed;
                 ChangePinButton.Content = "Set PIN";
-
-                // Schedule section: hide PIN requirement in setup mode
-                SchedulePinLabel.Visibility = Visibility.Collapsed;
-                SchedulePinBox.Visibility = Visibility.Collapsed;
             }
             else
             {
-                // PIN section: show "Change PIN" mode
                 ChangePinTitle.Text = "Change PIN";
                 CurrentPinLabel.Visibility = Visibility.Visible;
                 CurrentPinBox.Visibility = Visibility.Visible;
                 ChangePinButton.Content = "Change PIN";
-
-                // Schedule section: require PIN
-                SchedulePinLabel.Visibility = Visibility.Visible;
-                SchedulePinBox.Visibility = Visibility.Visible;
             }
         }
         catch (Exception ex)
@@ -283,31 +322,20 @@ public partial class MainWindow : Window
             var startMinutes = (int)startItem.Tag;
             var endMinutes = (int)endItem.Tag;
 
-            // Get PIN from schedule section input
-            // In setup mode, empty PIN is allowed
-            var pin = SchedulePinBox.Password;
-            if (_currentState?.IsSetupMode != true)
-            {
-                // Not in setup mode - require PIN
-                if (string.IsNullOrEmpty(pin) || pin.Length != 4)
-                {
-                    ShowScheduleError("Please enter your 4-digit PIN");
-                    return;
-                }
-            }
+            // Use verified PIN from login, or empty for setup mode
+            var pin = _verifiedPin ?? "";
 
             var success = await _ipcClient.SetScheduleAsync(pin, startMinutes, endMinutes);
 
             if (success)
             {
                 ScheduleErrorText.Visibility = Visibility.Collapsed;
-                SchedulePinBox.Password = "";
                 MessageBox.Show("Schedule saved successfully!", "Success", MessageBoxButton.OK, MessageBoxImage.Information);
                 await LoadSettingsAsync();
             }
             else
             {
-                ShowScheduleError("Failed to save schedule. Check your PIN.");
+                ShowScheduleError("Failed to save schedule.");
             }
         }
         catch (Exception ex)
@@ -397,13 +425,8 @@ public partial class MainWindow : Window
 
         try
         {
-            var pin = ResetPinBox.Password;
-
-            if (string.IsNullOrEmpty(pin) || pin.Length != 4)
-            {
-                ShowResetError("Please enter your PIN to confirm reset");
-                return;
-            }
+            // Use verified PIN from login, or empty for setup mode
+            var pin = _verifiedPin ?? "";
 
             var success = await _ipcClient.ResetAllAsync(pin);
 
@@ -414,7 +437,7 @@ public partial class MainWindow : Window
             }
             else
             {
-                ShowResetError("Failed to reset. Check your PIN.");
+                ShowResetError("Failed to reset.");
             }
         }
         catch (Exception ex)
@@ -475,6 +498,8 @@ public partial class MainWindow : Window
 
     protected override void OnClosed(EventArgs e)
     {
+        StopInactivityTimer();
+        InputManager.Current.PreProcessInput -= OnActivity;
         _ipcClient.Dispose();
         base.OnClosed(e);
     }
