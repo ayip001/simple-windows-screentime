@@ -71,12 +71,39 @@ public partial class MainWindow : Window
         }
     }
 
-    private void ShowPinEntry()
+    private async void ShowPinEntry()
     {
         PinEntryView.Visibility = Visibility.Visible;
         SettingsView.Visibility = Visibility.Collapsed;
         AccessDeniedView.Visibility = Visibility.Collapsed;
-        AccessPinBox.Focus();
+
+        // Check if already locked out
+        await CheckLockoutStateAsync();
+
+        if (AccessPinBox.IsEnabled)
+        {
+            AccessPinBox.Focus();
+        }
+    }
+
+    private async Task CheckLockoutStateAsync()
+    {
+        try
+        {
+            _currentState = await _ipcClient.GetStateAsync();
+            if (_currentState != null && _currentState.IsLockedOut && _currentState.LockoutUntilUtc.HasValue)
+            {
+                var remaining = (int)(_currentState.LockoutUntilUtc.Value - DateTime.UtcNow).TotalSeconds;
+                if (remaining > 0)
+                {
+                    SetLockoutState(remaining);
+                }
+            }
+        }
+        catch
+        {
+            // Ignore errors checking lockout state
+        }
     }
 
     private void ShowSettings()
@@ -135,14 +162,17 @@ public partial class MainWindow : Window
         AccessDeniedView.Visibility = Visibility.Visible;
     }
 
+    private DispatcherTimer? _lockoutTimer;
+
     private async void AccessPinBox_PasswordChanged(object sender, RoutedEventArgs e)
     {
         if (AccessPinBox.Password.Length == 4)
         {
             await VerifyAccessPinAsync();
         }
-        else
+        else if (AccessPinBox.Password.Length > 0)
         {
+            // Only hide error when user starts typing a new PIN, not when cleared
             AccessErrorText.Visibility = Visibility.Collapsed;
         }
     }
@@ -167,12 +197,12 @@ public partial class MainWindow : Window
             }
             else if (result.IsLockedOut)
             {
-                ShowAccessError($"Too many attempts. Try again in {result.LockoutRemainingSeconds / 60} minutes");
                 AccessPinBox.Password = "";
+                SetLockoutState(result.LockoutRemainingSeconds ?? 0);
             }
             else if (result.IsRateLimited)
             {
-                ShowAccessError("Too many attempts. Please wait.");
+                ShowAccessError("Too many attempts. Please wait a moment.");
                 AccessPinBox.Password = "";
             }
             else
@@ -185,6 +215,66 @@ public partial class MainWindow : Window
         {
             ShowAccessError($"Error: {ex.Message}");
         }
+    }
+
+    private void SetLockoutState(int remainingSeconds)
+    {
+        // Disable input
+        AccessPinBox.IsEnabled = false;
+
+        // Show lockout message
+        UpdateLockoutMessage(remainingSeconds);
+
+        // Start countdown timer
+        _lockoutTimer?.Stop();
+        _lockoutTimer = new DispatcherTimer
+        {
+            Interval = TimeSpan.FromSeconds(1)
+        };
+
+        var lockoutEnd = DateTime.Now.AddSeconds(remainingSeconds);
+
+        _lockoutTimer.Tick += (s, e) =>
+        {
+            var remaining = (int)(lockoutEnd - DateTime.Now).TotalSeconds;
+            if (remaining <= 0)
+            {
+                ClearLockoutState();
+            }
+            else
+            {
+                UpdateLockoutMessage(remaining);
+            }
+        };
+
+        _lockoutTimer.Start();
+    }
+
+    private void UpdateLockoutMessage(int remainingSeconds)
+    {
+        var minutes = remainingSeconds / 60;
+        var seconds = remainingSeconds % 60;
+
+        string timeText;
+        if (minutes > 0)
+        {
+            timeText = seconds > 0 ? $"{minutes}m {seconds}s" : $"{minutes} minute(s)";
+        }
+        else
+        {
+            timeText = $"{seconds} second(s)";
+        }
+
+        ShowAccessError($"Too many attempts. Locked out for {timeText}.");
+    }
+
+    private void ClearLockoutState()
+    {
+        _lockoutTimer?.Stop();
+        _lockoutTimer = null;
+        AccessPinBox.IsEnabled = true;
+        AccessErrorText.Visibility = Visibility.Collapsed;
+        AccessPinBox.Focus();
     }
 
     private async Task LoadSettingsAsync()
@@ -499,6 +589,8 @@ public partial class MainWindow : Window
     protected override void OnClosed(EventArgs e)
     {
         StopInactivityTimer();
+        _lockoutTimer?.Stop();
+        _lockoutTimer = null;
         InputManager.Current.PreProcessInput -= OnActivity;
         _ipcClient.Dispose();
         base.OnClosed(e);

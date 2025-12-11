@@ -19,6 +19,9 @@ public class AppConfig
     [JsonPropertyName("time_offset_ticks")]
     public long TimeOffsetTicks { get; set; }
 
+    [JsonPropertyName("debug_time_offset_ticks")]
+    public long DebugTimeOffsetTicks { get; set; }
+
     [JsonPropertyName("last_ntp_sync_utc")]
     public DateTime? LastNtpSyncUtc { get; set; }
 
