@@ -45,6 +45,11 @@ public static class IpcSerializer
                 "set_schedule" => JsonSerializer.Deserialize<SetScheduleRequest>(json, _options),
                 "reset_all" => JsonSerializer.Deserialize<ResetAllRequest>(json, _options),
                 "check_access" => JsonSerializer.Deserialize<CheckAccessRequest>(json, _options),
+                // Debug time manipulation
+                "debug_set_time_offset" => JsonSerializer.Deserialize<SetDebugTimeOffsetRequest>(json, _options),
+                "debug_adjust_time" => JsonSerializer.Deserialize<AdjustDebugTimeRequest>(json, _options),
+                "debug_clear_time_offset" => JsonSerializer.Deserialize<ClearDebugTimeOffsetRequest>(json, _options),
+                "debug_get_time_info" => JsonSerializer.Deserialize<GetDebugTimeInfoRequest>(json, _options),
                 _ => null
             };
         }

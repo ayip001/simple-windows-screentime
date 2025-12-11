@@ -61,6 +61,7 @@ public class AppConfig
             BlockStartMinutes = BlockStartMinutes,
             BlockEndMinutes = BlockEndMinutes,
             TimeOffsetTicks = TimeOffsetTicks,
+            DebugTimeOffsetTicks = DebugTimeOffsetTicks,
             LastNtpSyncUtc = LastNtpSyncUtc,
             RecoveryActive = RecoveryActive,
             RecoveryExpiresUtc = RecoveryExpiresUtc,

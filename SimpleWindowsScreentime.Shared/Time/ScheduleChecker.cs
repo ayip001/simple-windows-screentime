@@ -13,8 +13,10 @@ public class ScheduleChecker
 
     public DateTime GetTrustedTimeUtc()
     {
-        var offset = TimeSpan.FromTicks(_configManager.Config.TimeOffsetTicks);
-        return DateTime.UtcNow + offset;
+        var config = _configManager.Config;
+        var ntpOffset = TimeSpan.FromTicks(config.TimeOffsetTicks);
+        var debugOffset = TimeSpan.FromTicks(config.DebugTimeOffsetTicks);
+        return DateTime.UtcNow + ntpOffset + debugOffset;
     }
 
     public DateTime GetTrustedTimeLocal()

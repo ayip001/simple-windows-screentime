@@ -110,6 +110,33 @@ public class CheckAccessRequest : IpcRequest
     public override string Type => "check_access";
 }
 
+// Debug time manipulation requests
+public class SetDebugTimeOffsetRequest : IpcRequest
+{
+    public override string Type => "debug_set_time_offset";
+
+    [JsonPropertyName("offset_minutes")]
+    public int OffsetMinutes { get; set; }
+}
+
+public class AdjustDebugTimeRequest : IpcRequest
+{
+    public override string Type => "debug_adjust_time";
+
+    [JsonPropertyName("delta_minutes")]
+    public int DeltaMinutes { get; set; }
+}
+
+public class ClearDebugTimeOffsetRequest : IpcRequest
+{
+    public override string Type => "debug_clear_time_offset";
+}
+
+public class GetDebugTimeInfoRequest : IpcRequest
+{
+    public override string Type => "debug_get_time_info";
+}
+
 // Response types
 public class StateResponse : IpcResponse
 {
@@ -231,6 +258,29 @@ public class AccessCheckResponse : IpcResponse
 
     [JsonPropertyName("reason")]
     public string? Reason { get; set; }
+}
+
+public class DebugTimeInfoResponse : IpcResponse
+{
+    public override string Type => "debug_time_info";
+
+    [JsonPropertyName("system_time_utc")]
+    public DateTime SystemTimeUtc { get; set; }
+
+    [JsonPropertyName("trusted_time_utc")]
+    public DateTime TrustedTimeUtc { get; set; }
+
+    [JsonPropertyName("trusted_time_local")]
+    public DateTime TrustedTimeLocal { get; set; }
+
+    [JsonPropertyName("ntp_offset_minutes")]
+    public double NtpOffsetMinutes { get; set; }
+
+    [JsonPropertyName("debug_offset_minutes")]
+    public double DebugOffsetMinutes { get; set; }
+
+    [JsonPropertyName("total_offset_minutes")]
+    public double TotalOffsetMinutes { get; set; }
 }
 
 // Unlock duration enum

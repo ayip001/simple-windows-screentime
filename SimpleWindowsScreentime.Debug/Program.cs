@@ -44,8 +44,15 @@ class Program
             Console.WriteLine("  8. Check scheduled tasks");
             Console.WriteLine("  9. Restart service");
             Console.WriteLine("  A. Test check_access (ConfigPanel access check)");
+            WriteColor("  --- TIME MANIPULATION ---", ConsoleColor.Yellow);
+            Console.WriteLine("  T. View time info");
+            Console.WriteLine("  F. Fast-forward time (add minutes)");
+            Console.WriteLine("  R. Rewind time (subtract minutes)");
+            Console.WriteLine("  S. Set time offset directly");
+            Console.WriteLine("  X. Clear time offset (reset to real time)");
             if (_debugModeActive)
             {
+                WriteColor("  --- BACKDOOR ---", ConsoleColor.Magenta);
                 WriteColor("  B. [BACKDOOR] Disable blocking temporarily", ConsoleColor.Magenta);
                 WriteColor("  C. [BACKDOOR] Clear PIN (reset to setup mode)", ConsoleColor.Magenta);
             }
@@ -88,6 +95,22 @@ class Program
                     break;
                 case "A":
                     await TestCheckAccessAsync();
+                    break;
+                // Time manipulation
+                case "T":
+                    await ViewTimeInfoAsync();
+                    break;
+                case "F":
+                    await FastForwardTimeAsync();
+                    break;
+                case "R":
+                    await RewindTimeAsync();
+                    break;
+                case "S":
+                    await SetTimeOffsetAsync();
+                    break;
+                case "X":
+                    await ClearTimeOffsetAsync();
                     break;
                 case "B" when _debugModeActive:
                     await DisableBlockingTemporarilyAsync();
@@ -637,6 +660,226 @@ class Program
             });
 
             WriteColor("  [OK] PIN cleared - now in setup mode", ConsoleColor.Green);
+        }
+        catch (Exception ex)
+        {
+            WriteColor($"  [X] Error: {ex.Message}", ConsoleColor.Red);
+        }
+    }
+
+    // Time manipulation methods
+    static async Task ViewTimeInfoAsync()
+    {
+        WriteColor("==> Time Information", ConsoleColor.Cyan);
+
+        try
+        {
+            var response = await SendIpcRequestAsync<DebugTimeInfoResponse>(new GetDebugTimeInfoRequest());
+
+            if (response == null)
+            {
+                WriteColor("  [X] No response from service", ConsoleColor.Red);
+                return;
+            }
+
+            Console.WriteLine();
+            Console.WriteLine($"  System Time (UTC):   {response.SystemTimeUtc:yyyy-MM-dd HH:mm:ss}");
+            Console.WriteLine($"  System Time (Local): {response.SystemTimeUtc.ToLocalTime():yyyy-MM-dd HH:mm:ss}");
+            Console.WriteLine();
+            Console.WriteLine($"  Trusted Time (UTC):  {response.TrustedTimeUtc:yyyy-MM-dd HH:mm:ss}");
+            Console.WriteLine($"  Trusted Time (Local):{response.TrustedTimeLocal:yyyy-MM-dd HH:mm:ss}");
+            Console.WriteLine();
+            WriteColor("  --- OFFSETS ---", ConsoleColor.Yellow);
+            Console.WriteLine($"  NTP Offset:          {response.NtpOffsetMinutes:F1} minutes");
+
+            if (Math.Abs(response.DebugOffsetMinutes) > 0.01)
+            {
+                WriteColor($"  Debug Offset:        {response.DebugOffsetMinutes:F1} minutes", ConsoleColor.Magenta);
+            }
+            else
+            {
+                Console.WriteLine($"  Debug Offset:        {response.DebugOffsetMinutes:F1} minutes (none)");
+            }
+
+            Console.WriteLine($"  Total Offset:        {response.TotalOffsetMinutes:F1} minutes");
+
+            if (Math.Abs(response.DebugOffsetMinutes) > 0.01)
+            {
+                Console.WriteLine();
+                WriteColor("  [!] Debug time offset is active - time is being manipulated", ConsoleColor.Yellow);
+            }
+
+            WriteColor("  [OK] Time info retrieved", ConsoleColor.Green);
+        }
+        catch (Exception ex)
+        {
+            WriteColor($"  [X] Error: {ex.Message}", ConsoleColor.Red);
+        }
+    }
+
+    static async Task FastForwardTimeAsync()
+    {
+        WriteColor("==> Fast-Forward Time", ConsoleColor.Cyan);
+        Console.WriteLine("  This will add minutes to the internal clock.");
+        Console.WriteLine("  Useful for testing: unlock expiry, block period start/end");
+        Console.WriteLine();
+
+        Console.Write("  Enter minutes to add (e.g., 15, 60, 120): ");
+        var input = Console.ReadLine()?.Trim();
+
+        if (!int.TryParse(input, out var minutes) || minutes <= 0)
+        {
+            WriteColor("  [X] Invalid input - please enter a positive number", ConsoleColor.Red);
+            return;
+        }
+
+        try
+        {
+            var response = await SendIpcRequestAsync<AckResponse>(new AdjustDebugTimeRequest { DeltaMinutes = minutes });
+
+            if (response == null)
+            {
+                WriteColor("  [X] No response from service", ConsoleColor.Red);
+                return;
+            }
+
+            if (response.Success)
+            {
+                WriteColor($"  [OK] {response.Message}", ConsoleColor.Green);
+                Console.WriteLine();
+                await ViewTimeInfoAsync();
+            }
+            else
+            {
+                WriteColor($"  [X] Failed: {response.Error}", ConsoleColor.Red);
+            }
+        }
+        catch (Exception ex)
+        {
+            WriteColor($"  [X] Error: {ex.Message}", ConsoleColor.Red);
+        }
+    }
+
+    static async Task RewindTimeAsync()
+    {
+        WriteColor("==> Rewind Time", ConsoleColor.Cyan);
+        Console.WriteLine("  This will subtract minutes from the internal clock.");
+        Console.WriteLine();
+
+        Console.Write("  Enter minutes to subtract (e.g., 15, 60, 120): ");
+        var input = Console.ReadLine()?.Trim();
+
+        if (!int.TryParse(input, out var minutes) || minutes <= 0)
+        {
+            WriteColor("  [X] Invalid input - please enter a positive number", ConsoleColor.Red);
+            return;
+        }
+
+        try
+        {
+            var response = await SendIpcRequestAsync<AckResponse>(new AdjustDebugTimeRequest { DeltaMinutes = -minutes });
+
+            if (response == null)
+            {
+                WriteColor("  [X] No response from service", ConsoleColor.Red);
+                return;
+            }
+
+            if (response.Success)
+            {
+                WriteColor($"  [OK] {response.Message}", ConsoleColor.Green);
+                Console.WriteLine();
+                await ViewTimeInfoAsync();
+            }
+            else
+            {
+                WriteColor($"  [X] Failed: {response.Error}", ConsoleColor.Red);
+            }
+        }
+        catch (Exception ex)
+        {
+            WriteColor($"  [X] Error: {ex.Message}", ConsoleColor.Red);
+        }
+    }
+
+    static async Task SetTimeOffsetAsync()
+    {
+        WriteColor("==> Set Time Offset", ConsoleColor.Cyan);
+        Console.WriteLine("  Set the debug time offset directly (in minutes from real time).");
+        Console.WriteLine("  Positive = future, Negative = past");
+        Console.WriteLine();
+
+        Console.Write("  Enter offset in minutes (e.g., 60, -30, 480): ");
+        var input = Console.ReadLine()?.Trim();
+
+        if (!int.TryParse(input, out var minutes))
+        {
+            WriteColor("  [X] Invalid input - please enter a number", ConsoleColor.Red);
+            return;
+        }
+
+        try
+        {
+            var response = await SendIpcRequestAsync<AckResponse>(new SetDebugTimeOffsetRequest { OffsetMinutes = minutes });
+
+            if (response == null)
+            {
+                WriteColor("  [X] No response from service", ConsoleColor.Red);
+                return;
+            }
+
+            if (response.Success)
+            {
+                WriteColor($"  [OK] {response.Message}", ConsoleColor.Green);
+                Console.WriteLine();
+                await ViewTimeInfoAsync();
+            }
+            else
+            {
+                WriteColor($"  [X] Failed: {response.Error}", ConsoleColor.Red);
+            }
+        }
+        catch (Exception ex)
+        {
+            WriteColor($"  [X] Error: {ex.Message}", ConsoleColor.Red);
+        }
+    }
+
+    static async Task ClearTimeOffsetAsync()
+    {
+        WriteColor("==> Clear Time Offset", ConsoleColor.Cyan);
+        Console.WriteLine("  This will reset the debug time offset to zero (real time).");
+        Console.WriteLine();
+
+        Console.Write("  Confirm clear debug time offset? (yes/no): ");
+        var confirm = Console.ReadLine()?.Trim().ToLowerInvariant();
+
+        if (confirm != "yes" && confirm != "y")
+        {
+            Console.WriteLine("  Cancelled");
+            return;
+        }
+
+        try
+        {
+            var response = await SendIpcRequestAsync<AckResponse>(new ClearDebugTimeOffsetRequest());
+
+            if (response == null)
+            {
+                WriteColor("  [X] No response from service", ConsoleColor.Red);
+                return;
+            }
+
+            if (response.Success)
+            {
+                WriteColor($"  [OK] {response.Message}", ConsoleColor.Green);
+                Console.WriteLine();
+                await ViewTimeInfoAsync();
+            }
+            else
+            {
+                WriteColor($"  [X] Failed: {response.Error}", ConsoleColor.Red);
+            }
         }
         catch (Exception ex)
         {

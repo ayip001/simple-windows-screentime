@@ -241,6 +241,11 @@ public class IpcServer
                 SetScheduleRequest r => HandleSetSchedule(r),
                 ResetAllRequest r => HandleResetAll(r),
                 CheckAccessRequest => HandleCheckAccess(),
+                // Debug time manipulation
+                SetDebugTimeOffsetRequest r => HandleSetDebugTimeOffset(r),
+                AdjustDebugTimeRequest r => HandleAdjustDebugTime(r),
+                ClearDebugTimeOffsetRequest => HandleClearDebugTimeOffset(),
+                GetDebugTimeInfoRequest => HandleGetDebugTimeInfo(),
                 _ => new ErrorResponse("Unknown request type")
             };
 
@@ -471,6 +476,65 @@ public class IpcServer
         // will handle it. This prevents the ConfigPanel from being inaccessible
         // after a fresh install when the blocker isn't running yet.
         return new AccessCheckResponse { Allowed = true };
+    }
+
+    // Debug time manipulation handlers
+    private IpcResponse HandleSetDebugTimeOffset(SetDebugTimeOffsetRequest request)
+    {
+        _logger.LogWarning("DEBUG: Setting time offset to {Minutes} minutes", request.OffsetMinutes);
+
+        _configManager.Update(config =>
+        {
+            config.DebugTimeOffsetTicks = TimeSpan.FromMinutes(request.OffsetMinutes).Ticks;
+        });
+
+        return new AckResponse { Message = $"Debug time offset set to {request.OffsetMinutes} minutes" };
+    }
+
+    private IpcResponse HandleAdjustDebugTime(AdjustDebugTimeRequest request)
+    {
+        var currentOffset = TimeSpan.FromTicks(_configManager.Config.DebugTimeOffsetTicks);
+        var newOffset = currentOffset.Add(TimeSpan.FromMinutes(request.DeltaMinutes));
+
+        _logger.LogWarning("DEBUG: Adjusting time by {Delta} minutes (new offset: {NewOffset} minutes)",
+            request.DeltaMinutes, newOffset.TotalMinutes);
+
+        _configManager.Update(config =>
+        {
+            config.DebugTimeOffsetTicks = newOffset.Ticks;
+        });
+
+        return new AckResponse { Message = $"Debug time adjusted by {request.DeltaMinutes} minutes (total offset: {newOffset.TotalMinutes:F1} minutes)" };
+    }
+
+    private IpcResponse HandleClearDebugTimeOffset()
+    {
+        _logger.LogWarning("DEBUG: Clearing time offset");
+
+        _configManager.Update(config =>
+        {
+            config.DebugTimeOffsetTicks = 0;
+        });
+
+        return new AckResponse { Message = "Debug time offset cleared" };
+    }
+
+    private IpcResponse HandleGetDebugTimeInfo()
+    {
+        var config = _configManager.Config;
+        var ntpOffset = TimeSpan.FromTicks(config.TimeOffsetTicks);
+        var debugOffset = TimeSpan.FromTicks(config.DebugTimeOffsetTicks);
+        var totalOffset = ntpOffset + debugOffset;
+
+        return new DebugTimeInfoResponse
+        {
+            SystemTimeUtc = DateTime.UtcNow,
+            TrustedTimeUtc = _scheduleChecker.GetTrustedTimeUtc(),
+            TrustedTimeLocal = _scheduleChecker.GetTrustedTimeLocal(),
+            NtpOffsetMinutes = ntpOffset.TotalMinutes,
+            DebugOffsetMinutes = debugOffset.TotalMinutes,
+            TotalOffsetMinutes = totalOffset.TotalMinutes
+        };
     }
 
     public void Stop()
