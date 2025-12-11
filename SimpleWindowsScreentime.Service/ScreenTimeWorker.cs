@@ -104,9 +104,14 @@ public class ScreenTimeWorker : BackgroundService
         // Clear expired temp unlock
         _unlockManager.CheckAndClearExpiredUnlock();
 
-        // Determine if we should be blocking
+        // Determine if we should be blocking (use consistent trusted time)
+        var inBlockWindow = _scheduleChecker.IsWithinBlockWindow();
+        var hasTempUnlock = _scheduleChecker.HasTempUnlock();  // Use ScheduleChecker for consistent trusted time
         var shouldBlock = _scheduleChecker.ShouldBlock();
         var blockerRunning = _blockerManager.IsBlockerRunning();
+
+        _logger.LogInformation("MainLoop: InBlockWindow={InBlock}, HasTempUnlock={Unlock}, ShouldBlock={Should}, BlockerRunning={Running}",
+            inBlockWindow, hasTempUnlock, shouldBlock, blockerRunning);
 
         if (shouldBlock && !blockerRunning)
         {

@@ -21,7 +21,8 @@ public class UnlockManager
         if (!config.TempUnlockExpiresUtc.HasValue)
             return false;
 
-        return DateTime.UtcNow < config.TempUnlockExpiresUtc.Value;
+        // Use trusted time for consistency
+        return _scheduleChecker.GetTrustedTimeUtc() < config.TempUnlockExpiresUtc.Value;
     }
 
     public DateTime? GetUnlockExpiry()
@@ -35,7 +36,8 @@ public class UnlockManager
         if (!config.TempUnlockExpiresUtc.HasValue)
             return null;
 
-        var remaining = config.TempUnlockExpiresUtc.Value - DateTime.UtcNow;
+        // Use trusted time for consistency
+        var remaining = config.TempUnlockExpiresUtc.Value - _scheduleChecker.GetTrustedTimeUtc();
         return remaining > TimeSpan.Zero ? remaining : null;
     }
 
@@ -61,8 +63,9 @@ public class UnlockManager
     {
         var config = _configManager.Config;
 
+        // Use trusted time for consistency
         if (config.TempUnlockExpiresUtc.HasValue &&
-            DateTime.UtcNow >= config.TempUnlockExpiresUtc.Value)
+            _scheduleChecker.GetTrustedTimeUtc() >= config.TempUnlockExpiresUtc.Value)
         {
             ClearUnlock();
         }
@@ -70,12 +73,14 @@ public class UnlockManager
 
     private DateTime CalculateUnlockExpiry(UnlockDuration duration)
     {
+        // Use trusted time for consistency
+        var trustedUtc = _scheduleChecker.GetTrustedTimeUtc();
         return duration switch
         {
-            UnlockDuration.FifteenMinutes => DateTime.UtcNow.AddMinutes(15),
-            UnlockDuration.OneHour => DateTime.UtcNow.AddHours(1),
+            UnlockDuration.FifteenMinutes => trustedUtc.AddMinutes(15),
+            UnlockDuration.OneHour => trustedUtc.AddHours(1),
             UnlockDuration.RestOfPeriod => CalculateRestOfPeriodExpiry(),
-            _ => DateTime.UtcNow.AddMinutes(15)
+            _ => trustedUtc.AddMinutes(15)
         };
     }
 

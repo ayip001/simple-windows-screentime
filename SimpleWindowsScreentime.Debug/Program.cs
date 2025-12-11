@@ -169,22 +169,104 @@ class Program
                 return;
             }
 
-            Console.WriteLine($"  Is Blocking:        {response.IsBlocking}");
-            Console.WriteLine($"  Is Setup Mode:      {response.IsSetupMode}");
-            Console.WriteLine($"  Block Start:        {ScheduleChecker.FormatMinutesAsTime(response.BlockStartMinutes)}");
-            Console.WriteLine($"  Block End:          {ScheduleChecker.FormatMinutesAsTime(response.BlockEndMinutes)}");
-            Console.WriteLine($"  Current Time (UTC): {response.CurrentTimeUtc}");
-            Console.WriteLine($"  Trusted Time (UTC): {response.TrustedTimeUtc}");
+            // Blocking Status Section
+            Console.WriteLine();
+            WriteColor("  --- BLOCKING STATUS ---", ConsoleColor.Yellow);
+
+            // Determine current schedule state
+            var trustedLocal = response.TrustedTimeUtc.ToLocalTime();
+            var currentMinutes = trustedLocal.Hour * 60 + trustedLocal.Minute;
+            var isInBlockWindow = ScheduleChecker.IsWithinBlockWindow(
+                currentMinutes, response.BlockStartMinutes, response.BlockEndMinutes);
+
+            Console.WriteLine($"  In Block Window:    {isInBlockWindow}");
             Console.WriteLine($"  Temp Unlock Active: {response.TempUnlockActive}");
-            Console.WriteLine($"  Recovery Active:    {response.RecoveryActive}");
-            Console.WriteLine($"  Is Locked Out:      {response.IsLockedOut}");
-            Console.WriteLine($"  Failed Attempts:    {response.FailedAttempts}");
+            Console.WriteLine($"  Service IsBlocking: {response.IsBlocking}");
+
+            // Show effective state with color
+            if (response.IsBlocking)
+            {
+                WriteColor("  >> BLOCKING ACTIVE - Blocker should be running", ConsoleColor.Red);
+            }
+            else if (response.TempUnlockActive)
+            {
+                WriteColor("  >> TEMPORARILY UNLOCKED", ConsoleColor.Green);
+            }
+            else if (!isInBlockWindow)
+            {
+                WriteColor("  >> OUTSIDE BLOCK HOURS - Free period", ConsoleColor.Green);
+            }
+            else
+            {
+                WriteColor("  >> NOT BLOCKING (unknown reason)", ConsoleColor.Yellow);
+            }
+
+            // Temp Unlock Details
+            if (response.TempUnlockActive && response.TempUnlockExpiresUtc.HasValue)
+            {
+                var remaining = response.TempUnlockExpiresUtc.Value - DateTime.UtcNow;
+                if (remaining > TimeSpan.Zero)
+                {
+                    Console.WriteLine($"  Unlock Expires:     {response.TempUnlockExpiresUtc.Value.ToLocalTime():g}");
+                    Console.WriteLine($"  Time Remaining:     {ScheduleChecker.FormatTimeSpan(remaining)}");
+                }
+                else
+                {
+                    WriteColor("  Unlock EXPIRED - blocker should relaunch soon", ConsoleColor.Yellow);
+                }
+            }
+
+            // Check if blocker process is running
+            var blockerProcesses = Process.GetProcessesByName("STBlocker");
+            var blockerRunning = blockerProcesses.Length > 0;
+            foreach (var p in blockerProcesses) p.Dispose();
+
+            Console.WriteLine($"  Blocker Process:    {(blockerRunning ? "RUNNING" : "NOT RUNNING")}");
+
+            // Alert if mismatch
+            if (response.IsBlocking && !blockerRunning)
+            {
+                WriteColor("  [!] WARNING: Service says blocking but blocker not running!", ConsoleColor.Red);
+            }
+            else if (!response.IsBlocking && blockerRunning)
+            {
+                WriteColor("  [!] WARNING: Blocker running but service says not blocking!", ConsoleColor.Yellow);
+            }
+
+            // Schedule & Time Section
+            Console.WriteLine();
+            WriteColor("  --- SCHEDULE & TIME ---", ConsoleColor.Yellow);
+            Console.WriteLine($"  Block Schedule:     {ScheduleChecker.FormatMinutesAsTime(response.BlockStartMinutes)} - {ScheduleChecker.FormatMinutesAsTime(response.BlockEndMinutes)}");
+            Console.WriteLine($"  Current Time:       {trustedLocal:g} ({currentMinutes} min)");
+            Console.WriteLine($"  Trusted Time (UTC): {response.TrustedTimeUtc}");
 
             if (response.BlockEndsAtLocal.HasValue)
             {
+                var blockRemaining = response.BlockEndsAtLocal.Value.ToUniversalTime() - response.TrustedTimeUtc;
                 Console.WriteLine($"  Block Ends At:      {response.BlockEndsAtLocal.Value:g}");
+                if (blockRemaining > TimeSpan.Zero)
+                {
+                    Console.WriteLine($"  Block Remaining:    {ScheduleChecker.FormatTimeSpan(blockRemaining)}");
+                }
             }
 
+            // Other Status
+            Console.WriteLine();
+            WriteColor("  --- OTHER STATUS ---", ConsoleColor.Yellow);
+            Console.WriteLine($"  Is Setup Mode:      {response.IsSetupMode}");
+            Console.WriteLine($"  Recovery Active:    {response.RecoveryActive}");
+            if (response.RecoveryActive && response.RecoveryExpiresUtc.HasValue)
+            {
+                var recoveryRemaining = response.RecoveryExpiresUtc.Value - DateTime.UtcNow;
+                if (recoveryRemaining > TimeSpan.Zero)
+                {
+                    Console.WriteLine($"  Recovery Expires:   {ScheduleChecker.FormatTimeSpan(recoveryRemaining)}");
+                }
+            }
+            Console.WriteLine($"  Is Locked Out:      {response.IsLockedOut}");
+            Console.WriteLine($"  Failed Attempts:    {response.FailedAttempts}");
+
+            Console.WriteLine();
             WriteColor("  [OK] IPC communication successful", ConsoleColor.Green);
         }
         catch (Exception ex)

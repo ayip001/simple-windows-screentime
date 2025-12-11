@@ -44,17 +44,20 @@ public class BlockerProcessManager
             var timeSinceLastAttempt = DateTime.UtcNow - _lastLaunchAttempt;
             if (timeSinceLastAttempt.TotalMilliseconds < Constants.BlockerRelaunchDelayMs)
             {
+                _logger.LogDebug("LaunchBlocker: Skipped (rapid relaunch, {Ms}ms since last attempt)", timeSinceLastAttempt.TotalMilliseconds);
                 return;
             }
 
             if (IsBlockerRunning())
             {
+                _logger.LogDebug("LaunchBlocker: Skipped (blocker already running)");
                 return;
             }
 
             _lastLaunchAttempt = DateTime.UtcNow;
 
             var blockerPath = GetBlockerPath();
+            _logger.LogDebug("LaunchBlocker: BlockerPath={Path}", blockerPath ?? "(null)");
             if (string.IsNullOrEmpty(blockerPath) || !File.Exists(blockerPath))
             {
                 _logger.LogError("Blocker executable not found at expected path");
@@ -65,6 +68,7 @@ public class BlockerProcessManager
             {
                 // Get active session ID
                 var sessionId = GetActiveSessionId();
+                _logger.LogDebug("LaunchBlocker: SessionId={SessionId}", sessionId);
 
                 var startInfo = new ProcessStartInfo
                 {
@@ -76,10 +80,12 @@ public class BlockerProcessManager
                 // Launch in user session if possible
                 if (sessionId != 0)
                 {
+                    _logger.LogDebug("LaunchBlocker: Attempting LaunchInUserSession");
                     _blockerProcess = LaunchInUserSession(blockerPath, sessionId);
                 }
                 else
                 {
+                    _logger.LogDebug("LaunchBlocker: Session 0, using Process.Start");
                     _blockerProcess = Process.Start(startInfo);
                 }
 
@@ -88,6 +94,10 @@ public class BlockerProcessManager
                     _blockerProcess.EnableRaisingEvents = true;
                     _blockerProcess.Exited += OnBlockerExited;
                     _logger.LogInformation("Blocker launched successfully, PID: {PID}", _blockerProcess.Id);
+                }
+                else
+                {
+                    _logger.LogWarning("LaunchBlocker: Process launch returned null");
                 }
             }
             catch (Exception ex)
