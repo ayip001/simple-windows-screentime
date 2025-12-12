@@ -44,23 +44,26 @@ public class BlockerProcessManager
             var timeSinceLastAttempt = DateTime.UtcNow - _lastLaunchAttempt;
             if (timeSinceLastAttempt.TotalMilliseconds < Constants.BlockerRelaunchDelayMs)
             {
-                _logger.LogDebug("LaunchBlocker: Skipped (rapid relaunch, {Ms}ms since last attempt)", timeSinceLastAttempt.TotalMilliseconds);
+                _logger.LogWarning("LaunchBlocker: Skipped (rapid relaunch, {Ms}ms since last attempt)", timeSinceLastAttempt.TotalMilliseconds);
                 return;
             }
 
             if (IsBlockerRunning())
             {
-                _logger.LogDebug("LaunchBlocker: Skipped (blocker already running)");
+                _logger.LogWarning("LaunchBlocker: Skipped (blocker already running)");
                 return;
             }
 
             _lastLaunchAttempt = DateTime.UtcNow;
 
             var blockerPath = GetBlockerPath();
-            _logger.LogDebug("LaunchBlocker: BlockerPath={Path}", blockerPath ?? "(null)");
+            _logger.LogInformation("LaunchBlocker: BlockerPath={Path}", blockerPath ?? "(null)");
             if (string.IsNullOrEmpty(blockerPath) || !File.Exists(blockerPath))
             {
-                _logger.LogError("Blocker executable not found at expected path");
+                _logger.LogError("Blocker executable not found at expected path. Checked: {Primary}, {Backup}, {Local}",
+                    Path.Combine(Constants.ProgramFilesPath, Constants.BlockerExeName),
+                    Path.Combine(Constants.BackupPath, Constants.BlockerExeName),
+                    Path.Combine(AppContext.BaseDirectory, Constants.BlockerExeName));
                 return;
             }
 
@@ -68,7 +71,7 @@ public class BlockerProcessManager
             {
                 // Get active session ID
                 var sessionId = GetActiveSessionId();
-                _logger.LogDebug("LaunchBlocker: SessionId={SessionId}", sessionId);
+                _logger.LogInformation("LaunchBlocker: SessionId={SessionId}", sessionId);
 
                 var startInfo = new ProcessStartInfo
                 {
@@ -80,12 +83,12 @@ public class BlockerProcessManager
                 // Launch in user session if possible
                 if (sessionId != 0)
                 {
-                    _logger.LogDebug("LaunchBlocker: Attempting LaunchInUserSession");
+                    _logger.LogInformation("LaunchBlocker: Attempting LaunchInUserSession");
                     _blockerProcess = LaunchInUserSession(blockerPath, sessionId);
                 }
                 else
                 {
-                    _logger.LogDebug("LaunchBlocker: Session 0, using Process.Start");
+                    _logger.LogWarning("LaunchBlocker: Session 0 detected, using Process.Start (may not be visible to user)");
                     _blockerProcess = Process.Start(startInfo);
                 }
 
@@ -97,7 +100,7 @@ public class BlockerProcessManager
                 }
                 else
                 {
-                    _logger.LogWarning("LaunchBlocker: Process launch returned null");
+                    _logger.LogError("LaunchBlocker: Process launch returned null - blocker failed to start");
                 }
             }
             catch (Exception ex)
@@ -214,8 +217,19 @@ public class BlockerProcessManager
         {
             if (!NativeMethods.WTSQueryUserToken(sessionId, out var userToken))
             {
-                _logger.LogWarning("Failed to get user token, launching directly");
-                return Process.Start(path);
+                var error = System.Runtime.InteropServices.Marshal.GetLastWin32Error();
+                _logger.LogWarning("WTSQueryUserToken failed for session {SessionId}, error code: {Error}. Falling back to Process.Start", sessionId, error);
+                try
+                {
+                    var proc = Process.Start(path);
+                    _logger.LogInformation("Fallback Process.Start returned: {Result}", proc != null ? $"PID {proc.Id}" : "null");
+                    return proc;
+                }
+                catch (Exception startEx)
+                {
+                    _logger.LogError(startEx, "Fallback Process.Start also failed");
+                    return null;
+                }
             }
 
             try
@@ -223,6 +237,8 @@ public class BlockerProcessManager
                 var si = new NativeMethods.STARTUPINFO();
                 si.cb = System.Runtime.InteropServices.Marshal.SizeOf(si);
                 si.lpDesktop = "winsta0\\default";
+
+                _logger.LogInformation("Calling CreateProcessAsUser for session {SessionId}", sessionId);
 
                 if (!NativeMethods.CreateProcessAsUser(
                     userToken,
@@ -237,9 +253,22 @@ public class BlockerProcessManager
                     ref si,
                     out var pi))
                 {
-                    _logger.LogWarning("CreateProcessAsUser failed, launching directly");
-                    return Process.Start(path);
+                    var error = System.Runtime.InteropServices.Marshal.GetLastWin32Error();
+                    _logger.LogWarning("CreateProcessAsUser failed, error code: {Error}. Falling back to Process.Start", error);
+                    try
+                    {
+                        var proc = Process.Start(path);
+                        _logger.LogInformation("Fallback Process.Start returned: {Result}", proc != null ? $"PID {proc.Id}" : "null");
+                        return proc;
+                    }
+                    catch (Exception startEx)
+                    {
+                        _logger.LogError(startEx, "Fallback Process.Start also failed");
+                        return null;
+                    }
                 }
+
+                _logger.LogInformation("CreateProcessAsUser succeeded, PID: {PID}", pi.dwProcessId);
 
                 NativeMethods.CloseHandle(pi.hProcess);
                 NativeMethods.CloseHandle(pi.hThread);
@@ -254,7 +283,17 @@ public class BlockerProcessManager
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error launching in user session, falling back to direct launch");
-            return Process.Start(path);
+            try
+            {
+                var proc = Process.Start(path);
+                _logger.LogInformation("Exception fallback Process.Start returned: {Result}", proc != null ? $"PID {proc.Id}" : "null");
+                return proc;
+            }
+            catch (Exception startEx)
+            {
+                _logger.LogError(startEx, "Exception fallback Process.Start also failed");
+                return null;
+            }
         }
     }
 }

@@ -202,8 +202,8 @@ public partial class MainWindow : Window
             }
             else if (result.IsRateLimited)
             {
-                ShowAccessError("Too many attempts. Please wait a moment.");
                 AccessPinBox.Password = "";
+                SetRateLimitState();
             }
             else
             {
@@ -275,6 +275,29 @@ public partial class MainWindow : Window
         AccessPinBox.IsEnabled = true;
         AccessErrorText.Visibility = Visibility.Collapsed;
         AccessPinBox.Focus();
+    }
+
+    private void SetRateLimitState()
+    {
+        // Disable input for a short period (rate limiting is typically a few seconds)
+        AccessPinBox.IsEnabled = false;
+        ShowAccessError("Too many attempts. Please wait...");
+
+        // Re-enable after 3 seconds
+        _lockoutTimer?.Stop();
+        _lockoutTimer = new DispatcherTimer
+        {
+            Interval = TimeSpan.FromSeconds(3)
+        };
+        _lockoutTimer.Tick += (s, e) =>
+        {
+            _lockoutTimer?.Stop();
+            _lockoutTimer = null;
+            AccessPinBox.IsEnabled = true;
+            AccessErrorText.Visibility = Visibility.Collapsed;
+            AccessPinBox.Focus();
+        };
+        _lockoutTimer.Start();
     }
 
     private async Task LoadSettingsAsync()
