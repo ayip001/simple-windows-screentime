@@ -213,6 +213,8 @@ public class BlockerProcessManager
 
     private Process? LaunchInUserSession(string path, uint sessionId)
     {
+        var workingDirectory = Path.GetDirectoryName(path);
+
         try
         {
             if (!NativeMethods.WTSQueryUserToken(sessionId, out var userToken))
@@ -221,7 +223,14 @@ public class BlockerProcessManager
                 _logger.LogWarning("WTSQueryUserToken failed for session {SessionId}, error code: {Error}. Falling back to Process.Start", sessionId, error);
                 try
                 {
-                    var proc = Process.Start(path);
+                    var startInfo = new ProcessStartInfo
+                    {
+                        FileName = path,
+                        WorkingDirectory = workingDirectory,
+                        UseShellExecute = false,
+                        CreateNoWindow = false
+                    };
+                    var proc = Process.Start(startInfo);
                     _logger.LogInformation("Fallback Process.Start returned: {Result}", proc != null ? $"PID {proc.Id}" : "null");
                     return proc;
                 }
@@ -238,7 +247,7 @@ public class BlockerProcessManager
                 si.cb = System.Runtime.InteropServices.Marshal.SizeOf(si);
                 si.lpDesktop = "winsta0\\default";
 
-                _logger.LogInformation("Calling CreateProcessAsUser for session {SessionId}", sessionId);
+                _logger.LogInformation("Calling CreateProcessAsUser for session {SessionId}, workingDir={WorkDir}", sessionId, workingDirectory);
 
                 if (!NativeMethods.CreateProcessAsUser(
                     userToken,
@@ -249,7 +258,7 @@ public class BlockerProcessManager
                     false,
                     NativeMethods.CREATE_NEW_CONSOLE,
                     IntPtr.Zero,
-                    null,
+                    workingDirectory,  // Set working directory
                     ref si,
                     out var pi))
                 {
@@ -257,7 +266,14 @@ public class BlockerProcessManager
                     _logger.LogWarning("CreateProcessAsUser failed, error code: {Error}. Falling back to Process.Start", error);
                     try
                     {
-                        var proc = Process.Start(path);
+                        var startInfo = new ProcessStartInfo
+                        {
+                            FileName = path,
+                            WorkingDirectory = workingDirectory,
+                            UseShellExecute = false,
+                            CreateNoWindow = false
+                        };
+                        var proc = Process.Start(startInfo);
                         _logger.LogInformation("Fallback Process.Start returned: {Result}", proc != null ? $"PID {proc.Id}" : "null");
                         return proc;
                     }
@@ -285,7 +301,14 @@ public class BlockerProcessManager
             _logger.LogError(ex, "Error launching in user session, falling back to direct launch");
             try
             {
-                var proc = Process.Start(path);
+                var startInfo = new ProcessStartInfo
+                {
+                    FileName = path,
+                    WorkingDirectory = workingDirectory,
+                    UseShellExecute = false,
+                    CreateNoWindow = false
+                };
+                var proc = Process.Start(startInfo);
                 _logger.LogInformation("Exception fallback Process.Start returned: {Result}", proc != null ? $"PID {proc.Id}" : "null");
                 return proc;
             }
